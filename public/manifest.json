@@ -1,0 +1,10 @@
+{
+  "name": "House Money",
+  "short_name": "House Money",
+  "description": "Don't YOLO the rent. Leftover-first investing on FNB rails.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#eef2f0",
+  "theme_color": "#10241f",
+  "lang": "en-ZA"
+}

@@ -1,0 +1,235 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>House Money — Partner brief</title>
+    <style>
+      @page {
+        size: A4;
+        margin: 18mm 16mm 18mm 16mm;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: #13211c;
+        font: 11pt/1.45 "Segoe UI", "IBM Plex Sans", sans-serif;
+        background: #fff;
+      }
+      h1, h2, h3, .brand {
+        font-family: Georgia, "IBM Plex Serif", serif;
+        color: #10241f;
+      }
+      h1 { font-size: 26pt; margin: 0 0 6px; }
+      h2 {
+        font-size: 13.5pt;
+        margin: 22px 0 8px;
+        padding-bottom: 4px;
+        border-bottom: 2px solid #1b6b56;
+      }
+      h3 { font-size: 11.5pt; margin: 14px 0 6px; }
+      p, li { margin: 0 0 8px; }
+      ul { margin: 0 0 10px; padding-left: 18px; }
+      .cover {
+        background: #10241f;
+        color: #eef6f2;
+        padding: 28px 26px 24px;
+        margin: 0 0 22px;
+      }
+      .cover .eyebrow {
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        font-size: 8.5pt;
+        color: #8aa198;
+        margin: 0 0 10px;
+      }
+      .cover h1 { color: #fff; }
+      .cover .tag {
+        color: #c8891a;
+        font: 600 12pt Georgia, serif;
+        margin: 0 0 14px;
+      }
+      .cover p { color: #b7c9c1; margin: 0; max-width: 62ch; }
+      .meta {
+        display: flex;
+        gap: 18px;
+        flex-wrap: wrap;
+        margin-top: 18px;
+        font-size: 9.5pt;
+        color: #c5ddd4;
+      }
+      .meta b { color: #fff; }
+      .callout {
+        background: #e5f3ee;
+        border-left: 4px solid #1b6b56;
+        padding: 10px 14px;
+        margin: 12px 0 16px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10pt;
+        margin: 8px 0 14px;
+      }
+      th, td {
+        text-align: left;
+        padding: 7px 8px;
+        border-bottom: 1px solid #dbe3de;
+        vertical-align: top;
+      }
+      th { color: #5d6f67; font-weight: 600; font-size: 8.5pt; letter-spacing: 0.04em; text-transform: uppercase; }
+      .foot {
+        margin-top: 28px;
+        padding-top: 10px;
+        border-top: 1px solid #dbe3de;
+        color: #5d6f67;
+        font-size: 9pt;
+      }
+      .kicker { color: #1b6b56; font-weight: 600; }
+    </style>
+  </head>
+  <body>
+    <header class="cover">
+      <p class="eyebrow">FNB App of the Year 2026 · Partner brief</p>
+      <h1>House Money</h1>
+      <p class="tag">Don't YOLO the rent.</p>
+      <p>
+        A leftover-first investing desk for people whose money does not land on the 25th.
+        The product teaches first-time, irregular-income South Africans to invest only what is left
+        after life is paid — on FNB rails, with scams blocked, in the language they actually speak.
+      </p>
+      <div class="meta">
+        <span><b>Track</b> Financial inclusion &amp; money confidence</span>
+        <span><b>Status</b> Working demo · local app</span>
+        <span><b>Run</b> npm run dev → localhost:5173</span>
+      </div>
+    </header>
+
+    <h2>1. What we are building</h2>
+    <p>
+      House Money is not a full stock-trading app. It is a confidence product. It answers one
+      question for someone with gig money, SASSA, a messy payday, or a till: <b>after rent, food,
+      airtime and stokvel are locked, is there leftover — and if there is, what is the grown-up next step?</b>
+    </p>
+    <div class="callout">
+      <b>The rule:</b> rent is not a ticker. If it is not leftover, it is not a position. If leftover is R0, you sit. Sitting is the feature, not a failure.
+    </div>
+    <p>
+      The on-ramp is FNB, not Telegram: <b>Easy Zero</b> (R0 a month), <b>eWallet</b> (cash on a number),
+      <b>Shares Zero</b> (0% brokerage on FNB ETFs, no minimum). Those rails are mocked in the demo.
+      There is no live bank API. Paper money, real rules.
+    </p>
+
+    <h2>2. The goal</h2>
+    <p>Win the inclusion track by showing a <b>complete, usable app</b> a judge can walk in five minutes:</p>
+    <ul>
+      <li>A person with irregular income can see this week's leftover.</li>
+      <li>They cannot invest rent, groceries, or mashonisa credit.</li>
+      <li>They learn what an ETF is before they size a paper buy.</li>
+      <li>A WhatsApp “guaranteed 30%” tip is rug-pulled.</li>
+      <li>When leftover is real, the exit is Easy Zero → eWallet → Shares Zero — not a guru.</li>
+    </ul>
+    <p>
+      If a judge remembers one clip, it should be this: try to fund a trade with borrowed money or rent,
+      and the desk says <b>sit down</b>.
+    </p>
+
+    <h2>3. Two desks (on purpose)</h2>
+    <table>
+      <thead>
+        <tr>
+          <th></th>
+          <th>Demo desk — Thabo M.</th>
+          <th>Your desk — standard profile</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><b>Who</b></td>
+          <td>Soweto. Taxi gig + SASSA. The showcase persona.</td>
+          <td>Anyone who opens a desk. Partner, judge, or a real user.</td>
+        </tr>
+        <tr>
+          <td><b>How in</b></td>
+          <td>Continue as Thabo, or thabo@imali.za / leftover180</td>
+          <td>Open a desk (name, email, password)</td>
+        </tr>
+        <tr>
+          <td><b>Tape</b></td>
+          <td>Preloaded: R1,420 in, R1,240 locked, <b>R180 leftover</b></td>
+          <td>Blank. You name inflows and locked bills. Nothing copied from Thabo.</td>
+        </tr>
+        <tr>
+          <td><b>Why</b></td>
+          <td>Explain the product in 60 seconds without data entry.</td>
+          <td>Prove the leftover rule works on someone else's money.</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>4. The product loop</h2>
+    <ol>
+      <li><b>The desk</b> — this week's tape: inflows, locked bills, leftover, confidence meter.</li>
+      <li><b>Allocate</b> — park in eWallet, stack savings, paper an ETF. Cannot assign more than leftover. Keep at least R50 dry before a paper buy.</li>
+      <li><b>Learn</b> — five slides: leftover first, ETF basket, zero vig, rugs, FNB rails. No shortcut. “I understand — leftover only” unlocks on the last slide.</li>
+      <li><b>Paper buy</b> — Shares Zero ticket for FNB Top 40 (ETFT40). Confirm a paper fill. Fake next-week P&amp;L. Mashonisa leverage is a hard no.</li>
+      <li><b>Rug check</b> — tap group-chat tips. Guaranteed returns, OTP harvests, and “borrow to invest” are blocked. A real FNB product note passes.</li>
+      <li><b>The pipes</b> — graduate leftover: open Easy Zero, park eWallet, then open Shares Zero, in that order.</li>
+    </ol>
+    <p>
+      Confidence lights up only when three things are true: lesson done, R50 dry powder, and at least one rug catch. Then: <i>you may size. Lightly.</i>
+    </p>
+
+    <h2>5. Why this concept</h2>
+    <p>
+      South African inclusion is not “download a brokerage.” Payday is irregular. Mashonisa credit is close.
+      WhatsApp tips are closer. A stock chart without a leftover gate teaches people to YOLO the rent.
+    </p>
+    <p>
+      House Money takes the DNA of a trader app (paper ticket, ETF, P&amp;L) and puts a lock on it:
+      <b>life first, leftover second, FNB third, ego never.</b> That is money confidence for the track
+      FNB is actually judging — not another crypto inbox.
+    </p>
+    <p>
+      Languages: all 12 official languages. Eleven written packs, plus captioned SASL (sign is visual;
+      we did not fake a written sign language).
+    </p>
+
+    <h2>6. What is built vs what is still on the bench</h2>
+    <table>
+      <thead>
+        <tr><th>In the demo now</th><th>Not yet (on purpose)</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            Login / signup, Thabo demo, blank own-profile setup, leftover math, lesson guide,
+            confidence meter, Shares Zero paper ticket, rug check, Easy Zero → eWallet → Shares Zero,
+            12 languages, tests (40 passing).
+          </td>
+          <td>
+            Live FNB APIs (none public for this). Real brokerage. Bitcoin. Ugly “gig missed” week.
+            Second packed persona besides Thabo. SASL interpreter video. PayShap send.
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    <h2>7. How to try it</h2>
+    <p>In the project folder:</p>
+    <p><b>npm install</b> → <b>npm test</b> → <b>npm run dev</b> → open <b>http://localhost:5173</b></p>
+    <ul>
+      <li>Press <b>Continue as Thabo</b> to walk the packed example (R180 leftover).</li>
+      <li>Press <b>Open a desk</b> to build a blank tape from scratch.</li>
+    </ul>
+
+    <h2>8. One line for a judge</h2>
+    <div class="callout">
+      House Money teaches first-time, irregular-income South Africans to invest only what is left after life is paid — on FNB rails, with scams blocked, in the language they actually speak.
+    </div>
+
+    <p class="foot">
+      House Money · FNB App of the Year 2026 · Financial inclusion and money confidence · Demo, not advice.
+      If you YOLO the rent, that is a you problem.
+    </p>
+  </body>
+</html>
