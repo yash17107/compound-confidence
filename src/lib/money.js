@@ -39,19 +39,17 @@ export function validateSplit(leftover, split) {
   return { ok: true, remaining: roundRand(leftover - total), total };
 }
 
-export function paperWeekPnl(amount) {
-  const start = roundRand(amount);
-  const change = roundRand(start * 0.024);
-  return { start, change, value: roundRand(start + change) };
-}
-
-export function confidenceOf({ lessonDone, split, leftover, rugCaught }) {
+export function confidenceOf({ lessonDone, split, leftover, forecast }) {
+  const dry = Math.max(Number(leftover) || 0, 0);
+  const invest = Number(split?.invest || 0);
+  const cap = Number(forecast?.investCap);
+  const splitCheck = validateSplit(dry, split || {});
   const checks = {
     lesson: Boolean(lessonDone),
-    buffer: hasEmergencyBuffer(split, Math.max(leftover, 0)),
-    rug: Boolean(rugCaught),
+    buffer: leftover <= 0 ? true : hasEmergencyBuffer(split, dry),
+    cap: leftover <= 0 || (splitCheck.ok && (Number.isNaN(cap) || invest <= cap)),
   };
-  const score = Number(checks.lesson) + Number(checks.buffer) + Number(checks.rug);
+  const score = Number(checks.lesson) + Number(checks.buffer) + Number(checks.cap);
   return {
     checks,
     score,
@@ -60,10 +58,9 @@ export function confidenceOf({ lessonDone, split, leftover, rugCaught }) {
   };
 }
 
-export function canPaperInvest({ leftover, split, lessonDone, usingCredit }) {
-  if (usingCredit) {
-    return { ok: false, reason: "credit" };
-  }
+export function canAllocateInvest({ leftover, split, lessonDone, forecast }) {
+  const invest = Number(split?.invest || 0);
+  if (invest <= 0) return { ok: true };
   if (Number(leftover) <= 0) {
     return { ok: false, reason: "no-leftover" };
   }
@@ -71,14 +68,13 @@ export function canPaperInvest({ leftover, split, lessonDone, usingCredit }) {
     return { ok: false, reason: "lesson" };
   }
   const splitCheck = validateSplit(leftover, split);
-  if (!splitCheck.ok) {
-    return splitCheck;
-  }
-  if (Number(split.invest || 0) <= 0) {
-    return { ok: false, reason: "zero-invest" };
-  }
+  if (!splitCheck.ok) return splitCheck;
   if (!hasEmergencyBuffer(split, leftover)) {
     return { ok: false, reason: "buffer" };
+  }
+  const cap = Number(forecast?.investCap);
+  if (!Number.isNaN(cap) && invest > cap) {
+    return { ok: false, reason: "cap" };
   }
   return { ok: true };
 }

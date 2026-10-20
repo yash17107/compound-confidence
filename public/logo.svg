@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 980 360" role="img" aria-label="Compound Confidence. Stack it, track it, flex it.">
+  <defs>
+    <linearGradient id="cc-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1fa572"/>
+      <stop offset="1" stop-color="#0b5a41"/>
+    </linearGradient>
+  </defs>
+  <rect width="980" height="360" fill="#ffffff"/>
+  <g transform="translate(40 40) scale(0.546875)">
+    <rect width="512" height="512" rx="112" fill="url(#cc-bg)"/>
+    <g fill="#ffffff">
+      <rect x="128" y="302" width="72" height="90" rx="16" opacity="0.72"/>
+      <rect x="220" y="242" width="72" height="150" rx="16" opacity="0.86"/>
+      <rect x="312" y="182" width="72" height="210" rx="16"/>
+    </g>
+    <g fill="none" stroke="#ffffff" stroke-width="26" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M100 258 Q250 250 392 112"/>
+      <path d="M330 108 L396 106 L394 172"/>
+    </g>
+  </g>
+  <g font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+    <text x="360" y="150" font-size="96" font-weight="800" fill="#0b5a41" letter-spacing="-2">Compound</text>
+    <text x="360" y="240" font-size="96" font-weight="300" fill="#1fa572" letter-spacing="-2">Confidence</text>
+    <text x="364" y="300" font-size="32" font-weight="600" fill="#5d6f67" letter-spacing="3">STACK IT &#183; TRACK IT &#183; FLEX IT</text>
+  </g>
+</svg>

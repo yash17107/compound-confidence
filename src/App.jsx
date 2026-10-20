@@ -1,9 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
-import {
-  ETF,
-  SCAM_SAMPLES,
-} from "./data/demo.js";
-import { COPY, LANGS, langMeta, readLang, saveLang } from "./i18n.js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ETF } from "./data/demo.js";
+import { COPY, LANGS, fill, langMeta, readLang, saveLang } from "./i18n.js";
 import {
   continueAsDemo,
   continueAsNomsa,
@@ -16,7 +13,25 @@ import {
   signOut,
   signUp,
 } from "./lib/auth.js";
-import { readProgress, saveProgress } from "./lib/progress.js";
+import { clearProgress, readProgress, saveProgress } from "./lib/progress.js";
+import { appendWeek, forecastWeek, seededHistory, weekRecord } from "./lib/forecast.js";
+import {
+  EMPTY_ACCOUNTS,
+  cleanAccounts,
+  netWorth,
+  settleWeek,
+  startingAccounts,
+  weeksOfRent,
+} from "./lib/accounts.js";
+import {
+  accountStatement,
+  appendEntries,
+  cleanLedger,
+  isoDay,
+  seededLedger,
+  transfer,
+  weekEntries,
+} from "./lib/ledger.js";
 import {
   DEMO_PROFILE,
   hasMissedPrint,
@@ -28,19 +43,18 @@ import {
 } from "./lib/profile.js";
 import Setup from "./Setup.jsx";
 import {
-  canPaperInvest,
+  canAllocateInvest,
   confidenceOf,
   formatRand,
   leftoverOf,
-  paperWeekPnl,
   splitTotals,
   sumAmounts,
   validateSplit,
 } from "./lib/money.js";
-import { inspectMessage } from "./lib/scam.js";
+import { askCoach } from "./lib/coach.js";
 import "./App.css";
 
-const VIEWS = ["home", "week", "split", "learn", "invest", "scam", "graduate"];
+const VIEWS = ["home", "week", "split", "learn", "accounts", "coach"];
 
 export default function App() {
   const [session, setSession] = useState(() => readSession());
@@ -50,18 +64,16 @@ export default function App() {
   const [obligated, setObligated] = useState(DEMO_PROFILE.obligated);
   const [split, setSplit] = useState(DEMO_PROFILE.split);
   const [lessonDone, setLessonDone] = useState(false);
-  const [usingCredit, setUsingCredit] = useState(false);
-  const [bought, setBought] = useState(false);
-  const [buyMessage, setBuyMessage] = useState("");
-  const [ticketOpen, setTicketOpen] = useState(false);
-  const [scamPick, setScamPick] = useState(null);
-  const [rugCaught, setRugCaught] = useState(false);
   const [lessonStep, setLessonStep] = useState(0);
-  const [rails, setRails] = useState({ easy: false, wallet: false, shares: false });
-  const [railMessage, setRailMessage] = useState("");
   const [navOpen, setNavOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
+  const [history, setHistory] = useState([]);
+  const [weekClosed, setWeekClosed] = useState(false);
+  const [accounts, setAccounts] = useState(EMPTY_ACCOUNTS);
+  const [lastMoves, setLastMoves] = useState(null);
+  const [ledger, setLedger] = useState([]);
+  const [openAccount, setOpenAccount] = useState(null);
 
   const t = COPY[lang] || COPY.en;
   const leftover = leftoverOf(income, obligated);
@@ -89,15 +101,7 @@ export default function App() {
     const record = session.demo ? null : readUserRecord(session.email);
 
     setLessonDone(Boolean(progress.lessonDone ?? record?.lessonDone));
-    setBought(Boolean(progress.bought ?? record?.bought));
-    setBuyMessage("");
-    setTicketOpen(false);
-    setScamPick(null);
-    setRugCaught(Boolean(progress.rugCaught ?? record?.rugCaught));
     setLessonStep(Number(progress.lessonStep ?? record?.lessonStep) || 0);
-    setRails(progress.rails || record?.rails || { easy: false, wallet: false, shares: false });
-    setRailMessage("");
-    setUsingCredit(false);
 
     const nextIncome = progress.income || record?.income || packed?.income || DEMO_PROFILE.income;
     const nextObligated =
@@ -106,41 +110,59 @@ export default function App() {
     setIncome(nextIncome);
     setObligated(nextObligated);
     setSplit(nextSplit);
+    setHistory(
+      progress.history || record?.history || (packed ? seededHistory(session.hustle) : []),
+    );
+    setWeekClosed(false);
+    const savedAccounts = progress.accounts || record?.accounts;
+    setAccounts(
+      cleanAccounts(savedAccounts || (packed ? startingAccounts(session.hustle) : EMPTY_ACCOUNTS)),
+    );
+    const savedLedger = progress.ledger || record?.ledger;
+    setLedger(
+      savedLedger
+        ? cleanLedger(savedLedger)
+        : packed && !savedAccounts
+          ? seededLedger(session.hustle)
+          : [],
+    );
+    setLastMoves(null);
+    setOpenAccount(null);
   }, [session?.email]);
 
-  const inspect = useMemo(
-    () => (scamPick ? inspectMessage(scamPick.text) : null),
-    [scamPick],
+  const forecast = useMemo(
+    () => forecastWeek({ history, income, obligated }),
+    [history, income, obligated],
   );
-
-  useEffect(() => {
-    if (inspect?.blocked) setRugCaught(true);
-  }, [inspect]);
-
-  useEffect(() => {
-    if (!session || !inspect?.blocked) return;
-    persistDesk({ rugCaught: true });
-  }, [inspect?.blocked, session?.email]);
-
   const confidence = confidenceOf({
     lessonDone,
     split,
     leftover,
-    rugCaught,
+    forecast,
   });
-  const pnl = paperWeekPnl(split.invest);
+  const investCheck = canAllocateInvest({
+    leftover: Math.max(leftover, 0),
+    split,
+    lessonDone,
+    forecast,
+  });
+  const settleSplit = investCheck.ok
+    ? split
+    : investCheck.reason === "cap"
+      ? { ...split, invest: Math.max(0, Number(forecast.investCap) || 0) }
+      : { ...split, invest: 0 };
 
   const persistDesk = (patch = {}) => {
     if (!session) return;
     const snapshot = {
       lessonDone,
-      rugCaught,
       lessonStep,
-      rails,
-      bought,
       income,
       obligated,
       split,
+      history,
+      accounts,
+      ledger,
       ...patch,
     };
     saveProgress(session.email, snapshot);
@@ -152,10 +174,10 @@ export default function App() {
         obligated: snapshot.obligated,
         split: snapshot.split,
         lessonDone: snapshot.lessonDone,
-        rugCaught: snapshot.rugCaught,
-        rails: snapshot.rails,
-        bought: snapshot.bought,
         lessonStep: snapshot.lessonStep,
+        history: snapshot.history,
+        accounts: snapshot.accounts,
+        ledger: snapshot.ledger,
       });
     }
   };
@@ -181,10 +203,7 @@ export default function App() {
     const nextSplit = { hold: 0, save: 0, invest: 0 };
     setIncome(next);
     setSplit(nextSplit);
-    setBought(false);
-    setTicketOpen(false);
-    setBuyMessage("");
-    persistDesk({ income: next, split: nextSplit, bought: false });
+    persistDesk({ income: next, split: nextSplit });
   };
 
   const restorePrint = () => {
@@ -194,94 +213,55 @@ export default function App() {
     const nextSplit = packed?.split || suggestedSplit(leftoverOf(next, obligated));
     setIncome(next);
     setSplit(nextSplit);
-    setBought(false);
-    setTicketOpen(false);
-    setBuyMessage("");
-    persistDesk({ income: next, split: nextSplit, bought: false });
+    persistDesk({ income: next, split: nextSplit });
+  };
+
+  const closeWeek = () => {
+    const nextHistory = appendWeek(history, weekRecord(income, obligated));
+    const settled = settleWeek(accounts, { moneyIn, moneyOut, split: settleSplit });
+    const nextIncome = restorePrimaryPrint(income).filter((item) => item.id !== "extra");
+    const packed = session.demo ? packedProfile(session.hustle) : null;
+    const nextSplit = packed?.split || suggestedSplit(leftoverOf(nextIncome, obligated));
+    setHistory(nextHistory);
+    setIncome(nextIncome);
+    setSplit(nextSplit);
+    setWeekClosed(true);
+    const nextLedger = appendEntries(
+      ledger,
+      weekEntries({ income, obligated, moves: settled.moves, date: isoDay(new Date()) }),
+    );
+    setAccounts(settled.accounts);
+    setLastMoves(settled.moves);
+    setLedger(nextLedger);
+    persistDesk({
+      history: nextHistory,
+      income: nextIncome,
+      split: nextSplit,
+      accounts: settled.accounts,
+      ledger: nextLedger,
+    });
+  };
+
+  const moveMoney = ({ from, to, amount }) => {
+    const result = transfer(accounts, { from, to, amount });
+    if (!result.ok) return result;
+    const nextLedger = appendEntries(ledger, [result.entry]);
+    setAccounts(result.accounts);
+    setLedger(nextLedger);
+    persistDesk({ accounts: result.accounts, ledger: nextLedger });
+    return result;
+  };
+
+  const showAccount = (id) => {
+    setOpenAccount(id);
+    setView("accounts");
+    setNavOpen(false);
   };
 
   const changeSplit = (key, value) => {
     const amount = Math.max(0, Number(value) || 0);
     setSplit((prev) => ({ ...prev, [key]: amount }));
-    setBought(false);
-    setTicketOpen(false);
     persistTape(income, obligated, { ...split, [key]: amount });
-  };
-
-  const tryBuy = () => {
-    const result = canPaperInvest({
-      leftover: Math.max(leftover, 0),
-      split,
-      lessonDone,
-      usingCredit,
-    });
-    if (!result.ok) {
-      const map = {
-        credit: t.blockedCredit,
-        lesson: t.blockedLesson,
-        buffer: t.blockedBuffer,
-        "exceeds-leftover": t.blockedLeftover,
-        "no-leftover": t.blockedLeftover,
-        "zero-invest": t.blockedLeftover,
-      };
-      setBuyMessage(map[result.reason] || t.blockedLeftover);
-      setBought(false);
-      setTicketOpen(false);
-      return;
-    }
-    setBuyMessage("");
-    setTicketOpen(true);
-  };
-
-  const confirmFill = () => {
-    const result = canPaperInvest({
-      leftover: Math.max(leftover, 0),
-      split,
-      lessonDone,
-      usingCredit,
-    });
-    if (!result.ok) {
-      setTicketOpen(false);
-      tryBuy();
-      return;
-    }
-    setBought(true);
-    setTicketOpen(false);
-    setBuyMessage(t.bought);
-    persistDesk({ bought: true });
-  };
-
-  const openRail = (id) => {
-    if (id === "easy") {
-      const next = { ...rails, easy: true };
-      setRails(next);
-      setRailMessage(t.railEasyDone);
-      persistDesk({ rails: next });
-      return;
-    }
-    if (id === "wallet") {
-      if (!rails.easy) {
-        setRailMessage(t.railNeedEasy);
-        return;
-      }
-      const next = { ...rails, wallet: true };
-      setRails(next);
-      setRailMessage(t.railWalletDone);
-      persistDesk({ rails: next });
-      return;
-    }
-    if (!rails.easy) {
-      setRailMessage(t.railNeedEasy);
-      return;
-    }
-    if (!rails.wallet) {
-      setRailMessage(t.railNeedWallet);
-      return;
-    }
-    const next = { ...rails, shares: true };
-    setRails(next);
-    setRailMessage(t.railSharesDone);
-    persistDesk({ rails: next });
   };
 
   const completeLesson = () => {
@@ -319,21 +299,45 @@ export default function App() {
     setAuthMode("signup");
   };
 
+  const resetPackedDesk = () => {
+    if (!session?.demo) return;
+    const packed = packedProfile(session.hustle);
+    clearProgress(session.email);
+    setIncome(packed.income);
+    setObligated(packed.obligated);
+    setSplit(packed.split);
+    setLessonDone(false);
+    setLessonStep(0);
+    setHistory(seededHistory(session.hustle));
+    setWeekClosed(false);
+    setAccounts(startingAccounts(session.hustle));
+    setLedger(seededLedger(session.hustle));
+    setOpenAccount(null);
+    setLastMoves(null);
+    setView("home");
+    setNavOpen(false);
+    setConfirmDelete(false);
+  };
+
   const finishSetup = (profile) => {
     const result = saveUserProfile(session.email, profile);
     if (!result.ok) return;
     setIncome(profile.income);
     setObligated(profile.obligated);
     setSplit(profile.split);
+    setHistory([]);
+    setAccounts(EMPTY_ACCOUNTS);
+    setLedger([]);
+    setLastMoves(null);
     saveProgress(session.email, {
       lessonDone: false,
-      rugCaught: false,
-      rails: { easy: false, wallet: false, shares: false },
-      bought: false,
       lessonStep: 0,
       income: profile.income,
       obligated: profile.obligated,
       split: profile.split,
+      history: [],
+      accounts: EMPTY_ACCOUNTS,
+      ledger: [],
     });
     setSession(result.session);
     setView("home");
@@ -346,6 +350,7 @@ export default function App() {
 
   const go = (id) => {
     setView(id);
+    setOpenAccount(null);
     setNavOpen(false);
   };
 
@@ -394,40 +399,36 @@ export default function App() {
     splitCheck,
     assigned,
     lessonDone,
-    usingCredit,
-    bought,
-    buyMessage,
-    ticketOpen,
-    scamPick,
-    inspect,
-    rugCaught,
+    investCheck,
     confidence,
-    pnl,
-    rails,
-    railMessage,
     lessonStep,
     income,
     obligated,
     hustle: session.hustle,
+    history,
+    forecast,
+    weekClosed,
+    accounts,
+    lastMoves,
+    ledger,
+    openAccount,
+    worth: netWorth(accounts),
+    rentWeeks: weeksOfRent(accounts.savings, obligated),
+    preview: settleWeek(accounts, { moneyIn, moneyOut, split: settleSplit }),
   };
 
   const actions = {
     addGig,
+    closeWeek,
     missPrint,
     restorePrint,
     changeSplit,
-    tryBuy,
-    confirmFill,
-    setLessonDone,
     completeLesson,
     setLessonStep,
-    setUsingCredit,
-    setBuyMessage,
-    setBought,
-    setTicketOpen,
-    setScamPick,
-    openRail,
     setView: go,
+    showAccount,
+    closeAccount: () => setOpenAccount(null),
+    moveMoney,
   };
 
   return (
@@ -437,8 +438,11 @@ export default function App() {
       )}
       <aside className={navOpen ? "sidebar open" : "sidebar"}>
         <div className="brand-block">
-          <p className="brand">{t.brand}</p>
-          <p className="tag">{t.tag}</p>
+          <img className="brand-mark" src="/icon.svg" alt="" width="44" height="44" />
+          <div>
+            <p className="brand">{t.brand}</p>
+            <p className="tag">{t.tag}</p>
+          </div>
         </div>
         <nav className="side-nav" aria-label="Main">
           {VIEWS.map((id, index) => (
@@ -453,6 +457,11 @@ export default function App() {
           ))}
         </nav>
         <div className="sidebar-foot">
+          {session.demo && (
+            <button type="button" className="btn ghost" onClick={resetPackedDesk}>
+              {t.resetWeek}
+            </button>
+          )}
           <button type="button" className="btn ghost" onClick={openNewDesk}>
             {t.newDesk}
           </button>
@@ -516,9 +525,8 @@ export default function App() {
           {view === "week" && <Week t={t} money={money} actions={actions} />}
           {view === "split" && <Split t={t} money={money} actions={actions} />}
           {view === "learn" && <Learn t={t} money={money} actions={actions} />}
-          {view === "invest" && <Invest t={t} money={money} actions={actions} />}
-          {view === "scam" && <Scam t={t} money={money} actions={actions} />}
-          {view === "graduate" && <Graduate t={t} money={money} actions={actions} />}
+          {view === "accounts" && <AccountsPage t={t} money={money} actions={actions} htmlLang={htmlLang} />}
+          {view === "coach" && <Coach t={t} lang={lang} money={money} />}
           <p className="fine">{t.disclaimer}</p>
         </main>
       </div>
@@ -526,8 +534,8 @@ export default function App() {
         {[
           ["home", t.dockDesk, "desk"],
           ["week", t.dockTape, "tape"],
-          ["learn", t.dockGuide, "guide"],
-          ["invest", t.dockTicket, "ticket"],
+          ["accounts", t.dockAccounts, "wallet"],
+          ["coach", t.dockCoach, "chat"],
         ].map(([id, label, icon]) => (
           <button
             key={id}
@@ -559,7 +567,8 @@ function DockIcon({ name }) {
     desk: "M4 10.5 12 4l8 6.5V20H4z",
     tape: "M5 7h14v3H5zm0 7h9v3H5z",
     guide: "M6 5h12v14H6z M9 9h6 M9 13h6",
-    ticket: "M4 8h16v3a2 2 0 0 0 0 2v3H4v-3a2 2 0 0 0 0-2z",
+    wallet: "M4 7h16v12H4zM4 11h16",
+    chat: "M5 6h14v9H10l-4 3v-3H5z",
     more: "M6 12h.01M12 12h.01M18 12h.01",
   };
   return (
@@ -637,6 +646,7 @@ function Login({ t, lang, onLang, onSession, initialMode = "signin" }) {
     <div className="login">
       <section className="login-brand">
         <div>
+          <img className="brand-mark login-mark" src="/icon.svg" alt="" width="72" height="72" />
           <p className="tag">{t.tag}</p>
           <h1>{t.brand}</h1>
           <p>{t.welcomeSub}</p>
@@ -805,6 +815,450 @@ function LeftoverReceipt({ t, money }) {
   );
 }
 
+function BotFace() {
+  return (
+    <span className="bot-face" aria-hidden="true">
+      <svg viewBox="0 0 36 36">
+        <rect x="6" y="10" width="24" height="18" rx="8" fill="#1b6b56" />
+        <circle cx="18" cy="8" r="3" fill="#c8891a" />
+        <rect x="16.5" y="8" width="3" height="4" fill="#c8891a" />
+        <circle cx="14" cy="18" r="2.2" fill="#eef6f2" />
+        <circle cx="22" cy="18" r="2.2" fill="#eef6f2" />
+        <path d="M14 24c1.4 1.4 6.6 1.4 8 0" fill="none" stroke="#c8891a" strokeWidth="1.8" strokeLinecap="round" />
+      </svg>
+    </span>
+  );
+}
+
+function Coach({ t, lang, money }) {
+  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState([{ from: "desk", text: t.coachHello }]);
+  const [busy, setBusy] = useState(false);
+  const thread = useRef(null);
+  const badge = { ai: t.coachAi, rules: t.coachRules, offline: t.coachOffline };
+
+  useEffect(() => {
+    const node = thread.current;
+    if (node && typeof node.scrollTo === "function") {
+      node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
+    }
+  }, [messages, busy]);
+
+  const send = async (text) => {
+    const question = String(text || "").trim();
+    if (!question || busy) return;
+    setDraft("");
+    setBusy(true);
+    setMessages((prev) => [...prev, { from: "me", text: question }]);
+    const answer = await askCoach({
+      question,
+      lang,
+      income: money.income,
+      obligated: money.obligated,
+      history: money.history,
+      leftover: money.leftover,
+      forecast: money.forecast,
+    });
+    setMessages((prev) => [...prev, { from: "desk", text: answer.reply, source: answer.source }]);
+    setBusy(false);
+  };
+
+  return (
+    <section className="coach-page">
+      <div className="page-head">
+        <h1>{t.coachTitle}</h1>
+        <p className="lede">{t.coachSub}</p>
+      </div>
+      <div className="phone" data-testid="coach-phone">
+        <div className="phone-notch" aria-hidden="true" />
+        <div className="phone-screen">
+          <header className="imessage-bar">
+            <span className="imessage-time">9:41</span>
+            <div className="imessage-who">
+              <BotFace />
+              <div>
+                <strong>{t.coachBot}</strong>
+                <small>{t.coachBotStatus}</small>
+              </div>
+            </div>
+          </header>
+          <ol className="chat" aria-live="polite" data-testid="coach-chat" ref={thread}>
+            {messages.map((m, index) => (
+              <li key={index} className={m.from}>
+                {m.from === "desk" && <BotFace />}
+                <div className="bubble">
+                  <p>{m.text}</p>
+                  {m.source && <span className="src">{badge[m.source]}</span>}
+                </div>
+              </li>
+            ))}
+            {busy && (
+              <li className="desk typing">
+                <BotFace />
+                <div className="bubble dots" aria-label={t.coachThinking}>
+                  <i />
+                  <i />
+                  <i />
+                </div>
+              </li>
+            )}
+          </ol>
+          <div className="chips">
+            {[t.coachQ1, t.coachQ2, t.coachQ3].map((q) => (
+              <button key={q} type="button" className="chip" onClick={() => send(q)} disabled={busy}>
+                {q}
+              </button>
+            ))}
+          </div>
+          <form
+            className="chat-input"
+            onSubmit={(event) => {
+              event.preventDefault();
+              send(draft);
+            }}
+          >
+            <label className="sr-only" htmlFor="coach-q">
+              {t.coachPlaceholder}
+            </label>
+            <input
+              id="coach-q"
+              value={draft}
+              maxLength={500}
+              placeholder={t.coachPlaceholder}
+              onChange={(event) => setDraft(event.target.value)}
+            />
+            <button type="submit" className="send-pill" disabled={busy || !draft.trim()}>
+              {t.coachSend}
+            </button>
+          </form>
+          <p className="phone-home" aria-hidden="true" />
+        </div>
+      </div>
+      <p className="hint coach-safety">{t.coachSafety}</p>
+    </section>
+  );
+}
+
+function Accounts({ t, money, actions }) {
+  const after = money.preview.accounts;
+  const cards = [
+    ["main", t.acctMain, t.acctMainSub],
+    ["savings", t.acctSavings, t.acctSavingsSub],
+    ["invest", t.acctInvest, t.acctInvestSub],
+  ];
+  return (
+    <section className="accounts" aria-label={t.acctTitle}>
+      {cards.map(([id, name, sub]) => {
+        const change = after[id] - money.accounts[id];
+        return (
+          <button
+            key={id}
+            type="button"
+            className={`account ${id}`}
+            data-testid={`account-${id}`}
+            aria-label={`${name} ${formatRand(money.accounts[id])}. ${t.txOpen}`}
+            onClick={() => actions.showAccount(id)}
+          >
+            <span className="account-name">{name}</span>
+            <b>{formatRand(money.accounts[id])}</b>
+            <span className="account-sub">{sub}</span>
+            {change !== 0 && (
+              <span className={change > 0 ? "account-change up" : "account-change down"}>
+                {fill(t.acctAfter, { amount: formatRand(after[id]) })}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </section>
+  );
+}
+
+function accountName(t, id) {
+  return { main: t.acctMain, savings: t.acctSavings, invest: t.acctInvest }[id] || id;
+}
+
+function txTitle(t, row) {
+  if (row.kind === "in" || row.kind === "out") {
+    return t.items?.[row.item] || row.label || (row.item === "extra" ? t.extraGig : t.txOther);
+  }
+  const reason = { save: t.txSave, invest: t.txInvest, cover: t.txCover }[row.reason] || t.txManual;
+  return reason;
+}
+
+function txDetail(t, row, accountId) {
+  if (row.kind === "in") return t.txIncome;
+  if (row.kind === "out") {
+    return row.unpaid > 0 ? fill(t.txUnpaid, { amount: formatRand(row.unpaid) }) : t.txBill;
+  }
+  return row.from === accountId
+    ? fill(t.txTo, { name: accountName(t, row.to) })
+    : fill(t.txFrom, { name: accountName(t, row.from) });
+}
+
+function formatDay(iso, htmlLang) {
+  const [year, month, day] = iso.split("-").map(Number);
+  return new Date(year, month - 1, day).toLocaleDateString(htmlLang || "en-ZA", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+}
+
+function MoveMoney({ t, money, actions, accountId }) {
+  const others = ACCOUNT_ORDER.filter((id) => id !== accountId && id !== "invest");
+  const [to, setTo] = useState(others[0]);
+  const [amount, setAmount] = useState("");
+  const [status, setStatus] = useState(null);
+
+  if (!others.length) return null;
+
+  const submit = (event) => {
+    event.preventDefault();
+    const result = actions.moveMoney({ from: accountId, to, amount });
+    if (result.ok) {
+      setStatus({ ok: true, text: fill(t.txMoved, { amount: formatRand(result.entry.amount), name: accountName(t, to) }) });
+      setAmount("");
+    } else {
+      const reasons = { funds: t.txNoFunds, amount: t.txNoAmount, invest: t.txNoInvest };
+      setStatus({ ok: false, text: reasons[result.reason] || t.txNoAmount });
+    }
+  };
+
+  return (
+    <form className="card move-money" onSubmit={submit} data-testid="move-money">
+      <h2>{t.txMoveTitle}</h2>
+      <p className="hint">
+        {fill(t.txMoveHint, { amount: formatRand(money.accounts[accountId]) })}
+      </p>
+      <div className="move-row">
+        <label>
+          <span>{t.txMoveTo}</span>
+          <select value={to} onChange={(event) => setTo(event.target.value)} aria-label={t.txMoveTo}>
+            {others.map((id) => (
+              <option key={id} value={id}>
+                {accountName(t, id)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          <span>{t.txAmount}</span>
+          <input
+            type="number"
+            inputMode="decimal"
+            min="0"
+            step="10"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            aria-label={t.txAmount}
+            placeholder="R0"
+          />
+        </label>
+        <button className="btn primary" type="submit">
+          {t.txMoveBtn}
+        </button>
+      </div>
+      {accountId !== "invest" && <p className="hint">{t.txInvestNote}</p>}
+      {status && (
+        <p className={status.ok ? "ok" : "alert"} role="status" data-testid="move-status">
+          {status.text}
+        </p>
+      )}
+    </form>
+  );
+}
+
+const ACCOUNT_ORDER = ["main", "savings", "invest"];
+
+function AccountDetail({ t, money, actions, accountId, htmlLang }) {
+  const balance = money.accounts[accountId];
+  const statement = useMemo(
+    () => accountStatement(money.ledger, accountId, balance),
+    [money.ledger, accountId, balance],
+  );
+  const days = [];
+  for (const row of statement.rows) {
+    const last = days[days.length - 1];
+    if (last && last.date === row.date) last.rows.push(row);
+    else days.push({ date: row.date, rows: [row] });
+  }
+  const sub = { main: t.acctMainSub, savings: t.acctSavingsSub, invest: t.acctInvestSub }[accountId];
+
+  return (
+    <section data-testid={`account-detail-${accountId}`}>
+      <div className="page-head">
+        <button className="btn ghost back" type="button" onClick={actions.closeAccount}>
+          ← {t.txBack}
+        </button>
+        <h1>{accountName(t, accountId)}</h1>
+        <p className="lede">{sub}</p>
+      </div>
+
+      <article className={`card account-hero ${accountId}`}>
+        <p className="kicker">{t.txBalance}</p>
+        <b className="account-balance" data-testid="detail-balance">
+          {formatRand(balance)}
+        </b>
+        <div className="tx-totals">
+          <span>
+            <small>{t.txIn30}</small>
+            <b className="up">+{formatRand(statement.moneyIn)}</b>
+          </span>
+          <span>
+            <small>{t.txOut30}</small>
+            <b className="down">-{formatRand(statement.moneyOut)}</b>
+          </span>
+          <span>
+            <small>{t.txOpening}</small>
+            <b>{formatRand(statement.opening)}</b>
+          </span>
+        </div>
+        <div className="account-tabs" role="tablist" aria-label={t.acctTitle}>
+          {ACCOUNT_ORDER.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={id === accountId}
+              className={id === accountId ? "active" : ""}
+              onClick={() => actions.showAccount(id)}
+            >
+              {accountName(t, id)}
+            </button>
+          ))}
+        </div>
+      </article>
+
+      <MoveMoney key={accountId} t={t} money={money} actions={actions} accountId={accountId} />
+
+      <article className="card">
+        <h2>{t.txTitle}</h2>
+        {days.length === 0 ? (
+          <p className="hint" data-testid="tx-empty">
+            {accountId === "invest" ? t.txEmptyInvest : t.txEmpty}
+          </p>
+        ) : (
+          <div className="tx-list" data-testid="tx-list">
+            {days.map((day) => (
+              <section key={day.date} className="tx-day">
+                <h3>{formatDay(day.date, htmlLang)}</h3>
+                <ul>
+                  {day.rows.map((row) => (
+                    <li key={row.id} className={`tx ${row.kind}`} data-testid="tx-row">
+                      <span className={`tx-icon ${row.delta > 0 ? "up" : "down"}`} aria-hidden="true">
+                        {row.kind === "move" ? "⇄" : row.delta > 0 ? "↓" : "↑"}
+                      </span>
+                      <span className="tx-text">
+                        <b>{txTitle(t, row)}</b>
+                        <small>{txDetail(t, row, accountId)}</small>
+                      </span>
+                      <span className="tx-amount">
+                        <b className={row.delta > 0 ? "up" : "down"}>
+                          {row.delta > 0 ? "+" : "-"}
+                          {formatRand(Math.abs(row.delta))}
+                        </b>
+                        <small>{formatRand(row.balance)}</small>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        )}
+      </article>
+    </section>
+  );
+}
+
+function WeekMoves({ t, moves }) {
+  if (moves.leftover < 0) {
+    return (
+      <p className={moves.short > 0 ? "alert" : "ok"} data-testid="week-moves">
+        {fill(t.movesCovered, {
+          main: formatRand(moves.fromMain),
+          savings: formatRand(moves.fromSavings),
+        })}{" "}
+        {moves.short > 0 ? fill(t.movesShort, { amount: formatRand(moves.short) }) : t.movesSaved}
+      </p>
+    );
+  }
+  return (
+    <p className="ok" data-testid="week-moves">
+      {fill(t.movesSplit, {
+        savings: formatRand(moves.toSavings),
+        invest: formatRand(moves.toInvest),
+        main: formatRand(moves.toMain),
+      })}
+    </p>
+  );
+}
+
+function ForecastCard({ t, money, actions }) {
+  const f = money.forecast;
+  const pastLeftovers = money.history.map((item) => item.moneyIn - item.moneyOut);
+  const scale = Math.max(1, ...pastLeftovers.map(Math.abs), Math.abs(f.goodLeftover), Math.abs(f.badLeftover));
+  const height = (value) => `${Math.max(6, (Math.abs(value) / scale) * 100)}%`;
+  const headline = { sit: t.fcSit, light: t.fcLight, go: t.fcGo }[f.call];
+
+  return (
+    <article className={`card forecast ${f.call}`} data-testid="forecast">
+      <p className="kicker">{t.fcTitle}</p>
+      <h2 data-testid="forecast-call">{headline}</h2>
+      {money.history.length > 0 && (
+        <div className="spark" aria-hidden="true">
+          {pastLeftovers.map((value, index) => (
+            <span
+              key={index}
+              className={value < 0 ? "neg" : "pos"}
+              style={{ height: height(value) }}
+            />
+          ))}
+          <span className="next" style={{ height: height(f.goodLeftover * f.odds) }} />
+        </div>
+      )}
+      <ul className="fc-lines">
+        {f.weeks > 0 && (
+          <li data-testid="forecast-odds">
+            {fill(t.fcOdds, { landed: f.landed, weeks: f.weeks, odds: f.oddsPct })}
+          </li>
+        )}
+        <li>
+          {fill(t.fcIfLands, { amount: formatRand(f.goodLeftover) })}{" "}
+          {f.badLeftover < 0
+            ? fill(t.fcIfMissShort, { amount: formatRand(-f.badLeftover) })
+            : fill(t.fcIfMiss, { amount: formatRand(f.badLeftover) })}
+        </li>
+        {f.riskPct > 0 && <li>{fill(t.fcRisk, { risk: f.riskPct })}</li>}
+        {f.streak >= 2 && <li>{fill(t.fcStreak, { n: f.streak })}</li>}
+        <li data-testid="forecast-cap">
+          <b>
+            {f.call === "sit"
+              ? t.fcCapSit
+              : fill(t.fcCap, { cap: formatRand(f.investCap), aside: formatRand(f.setAside) })}
+          </b>
+        </li>
+        {f.lowData && <li className="hint">{fill(t.fcLowData, { n: f.weeks })}</li>}
+      </ul>
+      <div className="actions">
+        <button type="button" className="btn" onClick={actions.closeWeek} data-testid="close-week">
+          {t.fcCloseWeek}
+        </button>
+      </div>
+      {money.weekClosed && (
+        <div role="status">
+          <p className="ok" data-testid="week-closed">
+            {t.fcClosed}
+          </p>
+          {money.lastMoves && <WeekMoves t={t} moves={money.lastMoves} />}
+        </div>
+      )}
+      <p className="hint">{t.fcHow}</p>
+    </article>
+  );
+}
+
 function Overview({ t, money, actions }) {
   const leftoverSafe = Math.max(money.leftover, 0);
   const bar = (value) => `${leftoverSafe ? Math.min(100, (value / leftoverSafe) * 100) : 0}%`;
@@ -815,7 +1269,19 @@ function Overview({ t, money, actions }) {
         <h1>{t.overviewTitle}</h1>
         <p className="lede">{t.overviewSub}</p>
       </div>
+      <Accounts t={t} money={money} actions={actions} />
       <WeekSwitch t={t} money={money} actions={actions} />
+      <article className="walk-card">
+        <h2>{t.walkTitle}</h2>
+        <ol>
+          <li>{t.walk1}</li>
+          <li>{t.walk2}</li>
+          <li>{t.walk3}</li>
+          <li>{t.walk4}</li>
+          <li>{t.walk5}</li>
+          <li>{t.walk6}</li>
+        </ol>
+      </article>
       {money.leftover <= 0 && <SitCard t={t} />}
       <div className="kpis">
         <article className={money.leftover <= 0 ? "kpi accent sit" : "kpi accent"}>
@@ -831,10 +1297,11 @@ function Overview({ t, money, actions }) {
           <b>{formatRand(money.moneyOut)}</b>
         </article>
         <article className="kpi">
-          <span>{t.position}</span>
-          <b>{money.bought ? formatRand(money.split.invest) : "—"}</b>
+          <span>{t.acctWorth}</span>
+          <b data-testid="net-worth">{formatRand(money.worth)}</b>
         </article>
       </div>
+      <ForecastCard t={t} money={money} actions={actions} />
       <LeftoverReceipt t={t} money={money} />
       <Confidence t={t} money={money} actions={actions} />
       <div className="grid-2">
@@ -862,10 +1329,10 @@ function Overview({ t, money, actions }) {
             {formatRand(Math.max(leftoverSafe - money.assigned, 0))}
           </p>
           <div className="actions">
-            <button className="btn" type="button" onClick={() => actions.setView("scam")}>
-              {t.openProtect}
+            <button className="btn" type="button" onClick={() => actions.setView("split")}>
+              {t.openSplit}
             </button>
-            <button className="btn" type="button" onClick={() => actions.setView("graduate")}>
+            <button className="btn primary" type="button" onClick={() => actions.setView("accounts")}>
               {t.openRails}
             </button>
           </div>
@@ -887,7 +1354,7 @@ function Confidence({ t, money, actions }) {
       <ul className="checks">
         <li className={checks.lesson ? "on" : ""}>{t.confidenceLesson}</li>
         <li className={checks.buffer ? "on" : ""}>{t.confidenceBuffer}</li>
-        <li className={checks.rug ? "on" : ""}>{t.confidenceRug}</li>
+        <li className={checks.cap ? "on" : ""}>{t.confidenceCap}</li>
       </ul>
       <div className="track">
         <i style={{ width: `${(score / max) * 100}%` }} />
@@ -898,9 +1365,9 @@ function Confidence({ t, money, actions }) {
             {t.openLearn}
           </button>
         )}
-        {!checks.rug && (
-          <button className="btn" type="button" onClick={() => actions.setView("scam")}>
-            {t.openProtect}
+        {!checks.cap && (
+          <button className="btn" type="button" onClick={() => actions.setView("split")}>
+            {t.openSplit}
           </button>
         )}
       </div>
@@ -982,6 +1449,11 @@ function Week({ t, money, actions }) {
             {t.uglyNote}
           </p>
         )}
+        <p className="hint">
+          {t.acctMain}: {formatRand(money.preview.accounts.main)} · {t.acctSavings}:{" "}
+          {formatRand(money.preview.accounts.savings)} · {t.acctInvest}:{" "}
+          {formatRand(money.preview.accounts.invest)}
+        </p>
         <div className="actions">
           <button className="btn primary" type="button" onClick={actions.addGig} disabled={money.extraGig}>
             {t.addGig}
@@ -994,6 +1466,18 @@ function Week({ t, money, actions }) {
 
 function Split({ t, money, actions }) {
   const leftoverSafe = Math.max(money.leftover, 0);
+  const after = money.preview.accounts;
+  const splitAlert =
+    leftoverSafe <= 0
+      ? t.blockedLeftover
+      : !money.splitCheck.ok
+        ? t.blockedLeftover
+        : !money.investCheck.ok
+          ? { lesson: t.blockedLesson, buffer: t.blockedBuffer, cap: t.blockedCap, "no-leftover": t.blockedLeftover }[
+              money.investCheck.reason
+            ]
+          : "";
+
   return (
     <section>
       <div className="page-head">
@@ -1002,28 +1486,52 @@ function Split({ t, money, actions }) {
       </div>
       <article className="card">
         <p className="hint">
-          {t.leftover}: {formatRand(leftoverSafe)} · {t.used} {formatRand(money.assigned)}
+          {t.leftover}: {formatRand(leftoverSafe)} · {t.used} {formatRand(money.assigned)} · {t.remaining}{" "}
+          {formatRand(Math.max(leftoverSafe - money.assigned, 0))}
         </p>
+        {money.forecast.weeks > 0 && (
+          <p className="hint" data-testid="invest-forecast">
+            {money.forecast.call === "sit"
+              ? t.fcCapSit
+              : fill(t.fcCap, {
+                  cap: formatRand(money.forecast.investCap),
+                  aside: formatRand(money.forecast.setAside),
+                })}
+          </p>
+        )}
         {[
-          ["hold", t.hold],
-          ["save", t.save],
-          ["invest", t.invest],
-        ].map(([key, label]) => (
+          ["hold", t.hold, t.acctMain],
+          ["save", t.save, t.acctSavings],
+          ["invest", t.invest, t.acctInvest],
+        ].map(([key, label, dest]) => (
           <label className="field" key={key}>
             {label}
+            <small className="field-hint">{dest}</small>
             <input
               type="number"
               min="0"
+              aria-label={label}
               value={money.split[key]}
               onChange={(event) => actions.changeSplit(key, event.target.value)}
             />
           </label>
         ))}
-        {!money.splitCheck.ok && (
-          <p className="alert" role="alert">
-            {t.blockedLeftover}
+        {splitAlert && (
+          <p className="alert" role="alert" data-testid="split-status">
+            {splitAlert}
           </p>
         )}
+        <ul className="split-preview">
+          <li>
+            {t.acctMain}: {formatRand(after.main)}
+          </li>
+          <li>
+            {t.acctSavings}: {formatRand(after.savings)}
+          </li>
+          <li>
+            {t.acctInvest}: {formatRand(after.invest)}
+          </li>
+        </ul>
       </article>
     </section>
   );
@@ -1094,163 +1602,57 @@ function Learn({ t, money, actions }) {
   );
 }
 
-function Invest({ t, money, actions }) {
-  return (
-    <section>
-      <div className="page-head">
-        <h1>{t.investTitle}</h1>
-        <p className="lede">
-          {ETF.name} · {t.paperLot} {formatRand(money.split.invest)} · {t.leftover}{" "}
-          {formatRand(Math.max(money.leftover, 0))}
-        </p>
-      </div>
-      <article className="card">
-        <label className="check">
-          <input
-            type="checkbox"
-            checked={money.usingCredit}
-            onChange={() => {
-              actions.setUsingCredit((prev) => !prev);
-              actions.setBought(false);
-              actions.setTicketOpen(false);
-            }}
-          />
-          {t.mashonisa}
-        </label>
-        <button type="button" className="btn primary" onClick={actions.tryBuy} data-testid="paper-buy">
-          {t.buy}
-        </button>
-        {money.buyMessage && (
-          <p className={money.bought ? "ok" : "alert"} role="status" data-testid="buy-status">
-            {money.buyMessage}
-          </p>
-        )}
-      </article>
-      {money.ticketOpen && (
-        <article className="card ticket" data-testid="shares-ticket">
-          <p className="paper-stamp">{t.paperBadge}</p>
-          <h2>{t.ticketTitle}</h2>
-          <dl className="ticket-rows">
-            <div>
-              <dt>{t.product}</dt>
-              <dd>
-                {ETF.name} · {ETF.code}
-              </dd>
-            </div>
-            <div>
-              <dt>{t.ticketVenue}</dt>
-              <dd>{t.ticketSide}</dd>
-            </div>
-            <div>
-              <dt>{t.ticketNotional}</dt>
-              <dd>{formatRand(money.split.invest)}</dd>
-            </div>
-            <div>
-              <dt>{t.fee}</dt>
-              <dd>{t.ticketFeeLine}</dd>
-            </div>
-          </dl>
-          <div className="actions">
-            <button className="btn" type="button" onClick={() => actions.setTicketOpen(false)}>
-              {t.ticketScratch}
-            </button>
-            <button
-              className="btn primary"
-              type="button"
-              data-testid="ticket-confirm"
-              onClick={actions.confirmFill}
-            >
-              {t.ticketConfirm}
-            </button>
-          </div>
-        </article>
-      )}
-      {money.bought && (
-        <article className="card fill" data-testid="paper-fill">
-          <h2>{t.ticketFill}</h2>
-          <p>
-            {ETF.code} · {formatRand(money.split.invest)} · {t.opened}
-          </p>
-          <p className="ok" data-testid="paper-pnl">
-            {t.pnlLabel}: {formatRand(money.pnl.value, 2)} ({money.pnl.change >= 0 ? "+" : ""}
-            {formatRand(money.pnl.change, 2)})
-          </p>
-          <p className="hint">{t.pnlHint}</p>
-        </article>
-      )}
-    </section>
-  );
-}
-
-function Scam({ t, money, actions }) {
-  const [draft, setDraft] = useState("");
-  const [pasteError, setPasteError] = useState("");
-
-  const checkPaste = () => {
-    const text = draft.trim();
-    if (!text) {
-      setPasteError(t.pasteEmpty);
-      return;
-    }
-    setPasteError("");
-    actions.setScamPick({ id: "paste", from: t.inbox, text });
-  };
-
-  return (
-    <section>
-      <div className="page-head">
-        <h1>{t.scamTitle}</h1>
-        <p className="lede">{t.tapTip}</p>
-      </div>
-      <article className="card">
-        <ul className="tips">
-          {SCAM_SAMPLES.map((sample) => (
-            <li key={sample.id}>
-              <button type="button" onClick={() => actions.setScamPick(sample)}>
-                <small>{sample.from}</small>
-                {sample.text}
-              </button>
-            </li>
-          ))}
-        </ul>
-        <div className="paste-box">
-          <label className="field">
-            {t.pasteTip}
-            <textarea
-              data-testid="paste-tip"
-              value={draft}
-              onChange={(event) => setDraft(event.target.value)}
-              placeholder={t.pastePlaceholder}
-            />
-          </label>
-          <button className="btn primary" type="button" data-testid="paste-check" onClick={checkPaste}>
-            {t.pasteCheck}
-          </button>
-        </div>
-        {pasteError && (
-          <p className="alert" role="alert">
-            {pasteError}
-          </p>
-        )}
-        {money.inspect && (
-          <p
-            className={money.inspect.blocked ? "alert" : "ok"}
-            role="status"
-            data-testid="scam-status"
-          >
-            {money.inspect.blocked ? `${t.blocked}: ${money.inspect.headline}` : t.safeMsg}
-          </p>
-        )}
-      </article>
-    </section>
-  );
-}
-
-function Graduate({ t, money, actions }) {
-  const steps = [
-    { id: "easy", label: t.railEasy, done: money.rails.easy, testid: "rail-easy" },
-    { id: "wallet", label: t.railWallet, done: money.rails.wallet, testid: "rail-wallet" },
-    { id: "shares", label: t.railShares, done: money.rails.shares, testid: "rail-shares" },
+function AccountsPage({ t, money, actions, htmlLang }) {
+  if (money.openAccount) {
+    return (
+      <AccountDetail
+        t={t}
+        money={money}
+        actions={actions}
+        accountId={money.openAccount}
+        htmlLang={htmlLang}
+      />
+    );
+  }
+  const after = money.preview.accounts;
+  const move = money.preview.moves;
+  const rows = [
+    {
+      id: "main",
+      name: t.acctMain,
+      sub: t.acctMainSub,
+      rail: t.easyZero,
+      body: t.acctMainBody,
+      now: money.accounts.main,
+      next: after.main,
+      thisWeek:
+        money.leftover < 0
+          ? fill(t.acctMainOut, { amount: formatRand(move.fromMain) })
+          : fill(t.acctMainIn, { amount: formatRand(move.toMain) }),
+    },
+    {
+      id: "savings",
+      name: t.acctSavings,
+      sub: t.acctSavingsSub,
+      rail: t.ewallet,
+      body: fill(t.acctSavingsBody, { weeks: money.rentWeeks }),
+      now: money.accounts.savings,
+      next: after.savings,
+      thisWeek:
+        money.leftover < 0
+          ? fill(t.acctSavingsOut, { amount: formatRand(move.fromSavings) })
+          : fill(t.acctSavingsIn, { amount: formatRand(move.toSavings) }),
+    },
+    {
+      id: "invest",
+      name: t.acctInvest,
+      sub: t.acctInvestSub,
+      rail: t.sharesZero,
+      body: t.acctInvestBody,
+      now: money.accounts.invest,
+      next: after.invest,
+      thisWeek: fill(t.acctInvestIn, { amount: formatRand(move.toInvest) }),
+    },
   ];
 
   return (
@@ -1258,48 +1660,50 @@ function Graduate({ t, money, actions }) {
       <div className="page-head">
         <h1>{t.graduateTitle}</h1>
         <p className="lede">
-          {t.leftover} {formatRand(Math.max(money.leftover, 0))}. {t.hold} {formatRand(money.split.hold)},{" "}
-          {t.save} {formatRand(money.split.save)}, {t.paperLot} {formatRand(money.split.invest)}
-          {money.bought ? ` · ${t.opened}` : "."}
+          {t.acctWorth} {formatRand(money.worth)} · {t.leftover} {formatRand(Math.max(money.leftover, 0))}
         </p>
       </div>
       <article className="card fnb-story">
         <h2>{t.fnbInsideTitle}</h2>
         <p>{t.fnbInsideBody}</p>
       </article>
+      {rows.map((row) => (
+        <article key={row.id} className={`card account-detail ${row.id}`} data-testid={`account-page-${row.id}`}>
+          <p className="kicker">{row.rail}</p>
+          <h2>{row.name}</h2>
+          <b className="account-balance">{formatRand(row.now)}</b>
+          <p>{row.body}</p>
+          <p className="hint">{row.sub}</p>
+          <p className={row.next >= row.now ? "ok" : "alert"}>{row.thisWeek}</p>
+          {row.next !== row.now && (
+            <p className="hint">{fill(t.acctAfter, { amount: formatRand(row.next) })}</p>
+          )}
+          <div className="actions">
+            <button
+              className="btn"
+              type="button"
+              onClick={() => actions.showAccount(row.id)}
+              data-testid={`open-account-${row.id}`}
+            >
+              {t.txOpen}
+            </button>
+          </div>
+        </article>
+      ))}
       <article className="card">
-        <ul className="rails">
-          {steps.map((step) => (
-            <li key={step.id}>
-              <span>{step.label}</span>
-              <button
-                className={step.done ? "btn ghost" : "btn primary"}
-                type="button"
-                data-testid={step.testid}
-                onClick={() => actions.openRail(step.id)}
-                disabled={step.done}
-              >
-                {step.done ? t.railOpened : t.railOpen}
-              </button>
-            </li>
-          ))}
-        </ul>
+        <h2>{t.acctMarketTitle}</h2>
+        <p>{t.acctMarketBody}</p>
         <p className="hint">
-          {t.easyZero} {t.ewallet} {t.sharesZero}
+          {ETF.name} · {ETF.code} · {t.feeBuy}
         </p>
-        {money.railMessage && (
-          <p
-            className={
-              money.railMessage === t.railNeedEasy || money.railMessage === t.railNeedWallet
-                ? "alert"
-                : "ok"
-            }
-            role="status"
-            data-testid="rail-status"
-          >
-            {money.railMessage}
-          </p>
-        )}
+        <div className="actions">
+          <button className="btn" type="button" onClick={() => actions.setView("split")}>
+            {t.openSplit}
+          </button>
+          <button className="btn primary" type="button" onClick={actions.closeWeek} data-testid="accounts-close-week">
+            {t.fcCloseWeek}
+          </button>
+        </div>
       </article>
     </section>
   );

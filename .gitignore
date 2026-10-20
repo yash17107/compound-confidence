@@ -4,5 +4,9 @@ dist
 *.log
 .env
 .env.*
+.env.local
 !.env.example
-
+.vercel
+__pycache__/
+*.pyc
+*.pdf

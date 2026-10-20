@@ -1,8 +1,8 @@
-# House Money
+# Compound Confidence
 
 Hackathon demo for FNB App of the Year — **financial inclusion and money confidence**.
 
-**Don't YOLO the rent.** First pay life (rent, food, airtime, stokvel). Only leftover can become a paper FNB ETF. If leftover is R0, you sit. Sitting is the feature.
+**Stack it, track it, flex it.** First pay life (rent, food, airtime, stokvel). Only leftover can become a paper FNB ETF. If leftover is R0, you sit. Sitting is the feature.
 
 Rails are mocked FNB products, not live bank APIs: Easy Zero → eWallet → Shares Zero. WhatsApp "guaranteed 30%" tips get blocked.
 

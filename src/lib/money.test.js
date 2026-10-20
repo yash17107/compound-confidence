@@ -1,9 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
-  canPaperInvest,
+  canAllocateInvest,
   confidenceOf,
   leftoverOf,
-  paperWeekPnl,
   splitTotals,
   validateSplit,
 } from "./money.js";
@@ -20,6 +19,9 @@ const obligated = [
   { id: "stokvel", amount: 150 },
 ];
 
+const goodSplit = { hold: 80, save: 50, invest: 50 };
+const lightForecast = { investCap: 40 };
+
 describe("leftoverOf", () => {
   it("computes Thabo's leftover as R180", () => {
     expect(leftoverOf(income, obligated)).toBe(180);
@@ -32,10 +34,10 @@ describe("leftoverOf", () => {
 
 describe("validateSplit", () => {
   it("accepts a split that uses the full leftover", () => {
-    const result = validateSplit(180, { hold: 80, save: 50, invest: 50 });
+    const result = validateSplit(180, goodSplit);
     expect(result.ok).toBe(true);
     expect(result.remaining).toBe(0);
-    expect(splitTotals({ hold: 80, save: 50, invest: 50 })).toBe(180);
+    expect(splitTotals(goodSplit)).toBe(180);
   });
 
   it("rejects investing more than leftover", () => {
@@ -45,97 +47,96 @@ describe("validateSplit", () => {
   });
 });
 
-describe("canPaperInvest", () => {
-  const goodSplit = { hold: 80, save: 50, invest: 50 };
-
-  it("blocks a buy before the lesson", () => {
+describe("canAllocateInvest", () => {
+  it("lets a zero investment through before the lesson", () => {
     expect(
-      canPaperInvest({
+      canAllocateInvest({
+        leftover: 180,
+        split: { hold: 180, save: 0, invest: 0 },
+        lessonDone: false,
+        forecast: lightForecast,
+      }).ok,
+    ).toBe(true);
+  });
+
+  it("blocks leftover into investments until the lesson is done", () => {
+    expect(
+      canAllocateInvest({
         leftover: 180,
         split: goodSplit,
         lessonDone: false,
-        usingCredit: false,
+        forecast: lightForecast,
       }).reason,
     ).toBe("lesson");
   });
 
-  it("sits when leftover is gone, even before the lesson", () => {
+  it("sits when leftover is gone", () => {
     expect(
-      canPaperInvest({
+      canAllocateInvest({
         leftover: 0,
-        split: { hold: 0, save: 0, invest: 0 },
-        lessonDone: false,
-        usingCredit: false,
+        split: { hold: 0, save: 0, invest: 50 },
+        lessonDone: true,
+        forecast: lightForecast,
       }).reason,
     ).toBe("no-leftover");
   });
 
-  it("blocks mashonisa-funded investing", () => {
+  it("requires a cash buffer before leftover can leave Main", () => {
     expect(
-      canPaperInvest({
-        leftover: 180,
-        split: goodSplit,
-        lessonDone: true,
-        usingCredit: true,
-      }).reason,
-    ).toBe("credit");
-  });
-
-  it("requires a cash buffer before a paper buy", () => {
-    expect(
-      canPaperInvest({
+      canAllocateInvest({
         leftover: 180,
         split: { hold: 0, save: 0, invest: 180 },
         lessonDone: true,
-        usingCredit: false,
+        forecast: { investCap: 180 },
       }).reason,
     ).toBe("buffer");
   });
 
-  it("allows a paper buy of leftover after the lesson", () => {
+  it("caps leftover into investments at the forecast", () => {
     expect(
-      canPaperInvest({
+      canAllocateInvest({
         leftover: 180,
         split: goodSplit,
         lessonDone: true,
-        usingCredit: false,
+        forecast: lightForecast,
+      }).reason,
+    ).toBe("cap");
+  });
+
+  it("allows leftover into investments after the lesson, inside the cap", () => {
+    expect(
+      canAllocateInvest({
+        leftover: 180,
+        split: { hold: 90, save: 50, invest: 40 },
+        lessonDone: true,
+        forecast: lightForecast,
       }).ok,
     ).toBe(true);
   });
 });
 
 describe("confidenceOf", () => {
-  const split = { hold: 80, save: 50, invest: 50 };
-
   it("starts with only the buffer lit for Thabo", () => {
     const result = confidenceOf({
       lessonDone: false,
-      split,
+      split: goodSplit,
       leftover: 180,
-      rugCaught: false,
+      forecast: lightForecast,
     });
     expect(result.score).toBe(1);
-    expect(result.ready).toBe(false);
     expect(result.checks.buffer).toBe(true);
+    expect(result.checks.cap).toBe(false);
+    expect(result.ready).toBe(false);
   });
 
-  it("is ready after lesson, buffer, and a rug catch", () => {
+  it("is ready after the lesson and sizing inside the forecast cap", () => {
     const result = confidenceOf({
       lessonDone: true,
-      split,
+      split: { hold: 90, save: 50, invest: 40 },
       leftover: 180,
-      rugCaught: true,
+      forecast: lightForecast,
     });
     expect(result.score).toBe(3);
     expect(result.ready).toBe(true);
-  });
-});
-
-describe("paperWeekPnl", () => {
-  it("prints a small paper move on a R50 lot", () => {
-    const pnl = paperWeekPnl(50);
-    expect(pnl.start).toBe(50);
-    expect(pnl.change).toBe(1.2);
-    expect(pnl.value).toBe(51.2);
   });
 });

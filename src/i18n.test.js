@@ -15,7 +15,7 @@ describe("official languages", () => {
     for (const lang of LANGS) {
       expect(Object.keys(COPY[lang.id]).sort(), lang.id).toEqual(keys);
       expect(Object.keys(COPY[lang.id].items).sort(), `${lang.id}.items`).toEqual(itemKeys);
-      expect(COPY[lang.id].nav).toHaveLength(7);
+      expect(COPY[lang.id].nav).toHaveLength(6);
     }
   });
 

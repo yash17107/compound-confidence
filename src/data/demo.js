@@ -51,7 +51,6 @@ export const STEPS = [
   { id: "week", label: "This week" },
   { id: "split", label: "Split" },
   { id: "learn", label: "Learn" },
-  { id: "invest", label: "Paper buy" },
-  { id: "scam", label: "Scam check" },
-  { id: "graduate", label: "Graduate" },
+  { id: "accounts", label: "Accounts" },
+  { id: "coach", label: "Ask the desk" },
 ];
