@@ -52,9 +52,14 @@ import {
   validateSplit,
 } from "./lib/money.js";
 import { askCoach } from "./lib/coach.js";
+import { flexStats } from "./lib/flex.js";
+import { cleanGoals, defaultGoals, goalProgress, newGoal } from "./lib/goals.js";
+import { billCalendar, cleanSchedule, safeToSpend } from "./lib/safe.js";
+import { moneyWrap } from "./lib/wrap.js";
+import { BillCalendar, FlexStrip, GrowPage, SafeSpendCard, WrapCard } from "./Grow.jsx";
 import "./App.css";
 
-const VIEWS = ["home", "week", "split", "learn", "accounts", "coach"];
+const VIEWS = ["home", "week", "split", "learn", "accounts", "coach", "grow"];
 
 export default function App() {
   const [session, setSession] = useState(() => readSession());
@@ -74,6 +79,8 @@ export default function App() {
   const [lastMoves, setLastMoves] = useState(null);
   const [ledger, setLedger] = useState([]);
   const [openAccount, setOpenAccount] = useState(null);
+  const [goals, setGoals] = useState([]);
+  const [schedule, setSchedule] = useState(() => cleanSchedule());
 
   const t = COPY[lang] || COPY.en;
   const leftover = leftoverOf(income, obligated);
@@ -126,6 +133,9 @@ export default function App() {
           ? seededLedger(session.hustle)
           : [],
     );
+    const savedGoals = progress.goals || record?.goals;
+    setGoals(savedGoals ? cleanGoals(savedGoals) : defaultGoals(nextObligated));
+    setSchedule(cleanSchedule(progress.schedule || record?.schedule));
     setLastMoves(null);
     setOpenAccount(null);
   }, [session?.email]);
@@ -163,6 +173,8 @@ export default function App() {
       history,
       accounts,
       ledger,
+      goals,
+      schedule,
       ...patch,
     };
     saveProgress(session.email, snapshot);
@@ -178,6 +190,8 @@ export default function App() {
         history: snapshot.history,
         accounts: snapshot.accounts,
         ledger: snapshot.ledger,
+        goals: snapshot.goals,
+        schedule: snapshot.schedule,
       });
     }
   };
@@ -217,8 +231,8 @@ export default function App() {
   };
 
   const closeWeek = () => {
-    const nextHistory = appendWeek(history, weekRecord(income, obligated));
     const settled = settleWeek(accounts, { moneyIn, moneyOut, split: settleSplit });
+    const nextHistory = appendWeek(history, { ...weekRecord(income, obligated), short: settled.moves.short });
     const nextIncome = restorePrimaryPrint(income).filter((item) => item.id !== "extra");
     const packed = session.demo ? packedProfile(session.hustle) : null;
     const nextSplit = packed?.split || suggestedSplit(leftoverOf(nextIncome, obligated));
@@ -250,6 +264,33 @@ export default function App() {
     setLedger(nextLedger);
     persistDesk({ accounts: result.accounts, ledger: nextLedger });
     return result;
+  };
+
+  const addGoal = (draft) => {
+    const result = newGoal(draft, goals);
+    if (!result.ok) return result;
+    const next = [...goals, result.goal];
+    setGoals(next);
+    persistDesk({ goals: next });
+    return result;
+  };
+
+  const removeGoal = (id) => {
+    const next = goals.filter((goal) => goal.id !== id);
+    setGoals(next);
+    persistDesk({ goals: next });
+  };
+
+  const setPayday = (day) => {
+    const next = cleanSchedule({ ...schedule, payday: day });
+    setSchedule(next);
+    persistDesk({ schedule: next });
+  };
+
+  const setDueDay = (id, day) => {
+    const next = cleanSchedule({ ...schedule, due: { ...schedule.due, [id]: day } });
+    setSchedule(next);
+    persistDesk({ schedule: next });
   };
 
   const showAccount = (id) => {
@@ -312,6 +353,8 @@ export default function App() {
     setWeekClosed(false);
     setAccounts(startingAccounts(session.hustle));
     setLedger(seededLedger(session.hustle));
+    setGoals(defaultGoals(packed.obligated));
+    setSchedule(cleanSchedule());
     setOpenAccount(null);
     setLastMoves(null);
     setView("home");
@@ -328,6 +371,8 @@ export default function App() {
     setHistory([]);
     setAccounts(EMPTY_ACCOUNTS);
     setLedger([]);
+    setGoals(defaultGoals(profile.obligated));
+    setSchedule(cleanSchedule());
     setLastMoves(null);
     saveProgress(session.email, {
       lessonDone: false,
@@ -338,6 +383,7 @@ export default function App() {
       history: [],
       accounts: EMPTY_ACCOUNTS,
       ledger: [],
+      goals: defaultGoals(profile.obligated),
     });
     setSession(result.session);
     setView("home");
@@ -389,6 +435,12 @@ export default function App() {
     );
   }
 
+  const preview = settleWeek(accounts, { moneyIn, moneyOut, split: settleSplit });
+  const goalRows = goalProgress(goals, accounts, {
+    pace: { savings: preview.moves.toSavings, invest: preview.moves.toInvest },
+    odds: forecast.odds,
+  });
+
   const money = {
     leftover,
     moneyIn,
@@ -414,7 +466,19 @@ export default function App() {
     openAccount,
     worth: netWorth(accounts),
     rentWeeks: weeksOfRent(accounts.savings, obligated),
-    preview: settleWeek(accounts, { moneyIn, moneyOut, split: settleSplit }),
+    preview,
+    goalRows,
+    flex: flexStats({
+      history,
+      ledger,
+      lessonDone,
+      accounts,
+      obligated,
+      goalsDone: goalRows.filter((goal) => goal.done).length,
+    }),
+    safe: safeToSpend({ main: accounts.main, schedule, forecast }),
+    bills: billCalendar({ obligated, moneyIn, savings: accounts.savings, schedule }),
+    wrap: moneyWrap(ledger),
   };
 
   const actions = {
@@ -429,6 +493,10 @@ export default function App() {
     showAccount,
     closeAccount: () => setOpenAccount(null),
     moveMoney,
+    addGoal,
+    removeGoal,
+    setPayday,
+    setDueDay,
   };
 
   return (
@@ -521,11 +589,14 @@ export default function App() {
 
         <main className="content">
           {t.saslNote ? <p className="sasl-note">{t.saslNote}</p> : null}
-          {view === "home" && <Overview t={t} money={money} actions={actions} />}
-          {view === "week" && <Week t={t} money={money} actions={actions} />}
+          {view === "home" && <Overview t={t} money={money} actions={actions} htmlLang={htmlLang} />}
+          {view === "week" && <Week t={t} money={money} actions={actions} htmlLang={htmlLang} />}
+          {view === "grow" && <GrowPage t={t} money={money} actions={actions} htmlLang={htmlLang} />}
           {view === "split" && <Split t={t} money={money} actions={actions} />}
           {view === "learn" && <Learn t={t} money={money} actions={actions} />}
-          {view === "accounts" && <AccountsPage t={t} money={money} actions={actions} htmlLang={htmlLang} />}
+          {view === "accounts" && (
+            <AccountsPage t={t} lang={lang} money={money} actions={actions} htmlLang={htmlLang} />
+          )}
           {view === "coach" && <Coach t={t} lang={lang} money={money} />}
           <p className="fine">{t.disclaimer}</p>
         </main>
@@ -535,6 +606,7 @@ export default function App() {
           ["home", t.dockDesk, "desk"],
           ["week", t.dockTape, "tape"],
           ["accounts", t.dockAccounts, "wallet"],
+          ["grow", t.dockGrow, "grow"],
           ["coach", t.dockCoach, "chat"],
         ].map(([id, label, icon]) => (
           <button
@@ -568,6 +640,7 @@ function DockIcon({ name }) {
     tape: "M5 7h14v3H5zm0 7h9v3H5z",
     guide: "M6 5h12v14H6z M9 9h6 M9 13h6",
     wallet: "M4 7h16v12H4zM4 11h16",
+    grow: "M5 19V14M10 19V11M15 19V8M4 10l6-4 4 3 6-5M16 4h4v4",
     chat: "M5 6h14v9H10l-4 3v-3H5z",
     more: "M6 12h.01M12 12h.01M18 12h.01",
   };
@@ -1259,7 +1332,7 @@ function ForecastCard({ t, money, actions }) {
   );
 }
 
-function Overview({ t, money, actions }) {
+function Overview({ t, money, actions, htmlLang }) {
   const leftoverSafe = Math.max(money.leftover, 0);
   const bar = (value) => `${leftoverSafe ? Math.min(100, (value / leftoverSafe) * 100) : 0}%`;
 
@@ -1270,6 +1343,8 @@ function Overview({ t, money, actions }) {
         <p className="lede">{t.overviewSub}</p>
       </div>
       <Accounts t={t} money={money} actions={actions} />
+      <SafeSpendCard t={t} money={money} actions={actions} htmlLang={htmlLang} />
+      <FlexStrip t={t} money={money} actions={actions} />
       <WeekSwitch t={t} money={money} actions={actions} />
       <article className="walk-card">
         <h2>{t.walkTitle}</h2>
@@ -1418,7 +1493,7 @@ function Ledger({ t, money }) {
   );
 }
 
-function Week({ t, money, actions }) {
+function Week({ t, money, actions, htmlLang }) {
   return (
     <section>
       <div className="page-head">
@@ -1460,6 +1535,7 @@ function Week({ t, money, actions }) {
           </button>
         </div>
       </article>
+      <BillCalendar t={t} money={money} actions={actions} htmlLang={htmlLang} />
     </section>
   );
 }
@@ -1602,7 +1678,7 @@ function Learn({ t, money, actions }) {
   );
 }
 
-function AccountsPage({ t, money, actions, htmlLang }) {
+function AccountsPage({ t, lang, money, actions, htmlLang }) {
   if (money.openAccount) {
     return (
       <AccountDetail
@@ -1663,6 +1739,7 @@ function AccountsPage({ t, money, actions, htmlLang }) {
           {t.acctWorth} {formatRand(money.worth)} · {t.leftover} {formatRand(Math.max(money.leftover, 0))}
         </p>
       </div>
+      <WrapCard t={t} lang={lang} money={money} />
       <article className="card fnb-story">
         <h2>{t.fnbInsideTitle}</h2>
         <p>{t.fnbInsideBody}</p>

@@ -1,16 +1,12 @@
 """Compound Confidence coach: hard rules first, then an optional OpenAI voice on top of the numbers."""
 
-import json
-import os
 import re
-import urllib.error
-import urllib.request
 
+from .ai import chat
 from .forecast import HISTORY_LIMIT, forecast_week, leftover_of
 
 MAX_QUESTION = 500
 MAX_LINES = 20
-OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
 LANG_NAMES = {
     "en": "English",
@@ -115,31 +111,7 @@ def _system_prompt(lang, leftover, forecast):
 
 
 def ai_reply(question, lang, leftover, forecast, timeout=20):
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key:
-        return None
-    body = json.dumps(
-        {
-            "model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
-            "messages": [
-                {"role": "system", "content": _system_prompt(lang, leftover, forecast)},
-                {"role": "user", "content": question},
-            ],
-            "max_tokens": 220,
-            "temperature": 0.4,
-        }
-    ).encode()
-    request = urllib.request.Request(
-        OPENAI_URL,
-        data=body,
-        headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"},
-    )
-    try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
-            payload = json.loads(response.read())
-        return payload["choices"][0]["message"]["content"].strip() or None
-    except (urllib.error.URLError, TimeoutError, KeyError, IndexError, ValueError):
-        return None
+    return chat(_system_prompt(lang, leftover, forecast), question, timeout=timeout)
 
 
 def coach(question, desk, lang="en"):

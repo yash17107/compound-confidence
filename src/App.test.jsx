@@ -398,6 +398,71 @@ describe("Compound Confidence dashboard", () => {
     expect(screen.getByTestId("account-savings")).toHaveTextContent("R810");
   });
 
+  it("shows safe-to-spend and the next bills on the desk", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    const safe = screen.getByTestId("safe-spend");
+    expect(within(safe).getByTestId("safe-amount")).toHaveTextContent(/^R\d+$/);
+    expect(within(safe).getByText(/days to payday/i)).toBeInTheDocument();
+    expect(screen.getByTestId("flex-strip")).toHaveTextContent(/tracker/i);
+  });
+
+  it("flags bills a missed week can't cover", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getByRole("button", { name: /^this week$/i }));
+    const calendar = screen.getByTestId("bill-calendar");
+    expect(calendar.querySelectorAll(".bill.short")).toHaveLength(0);
+    await user.click(screen.getByRole("button", { name: /gig missed this week/i }));
+    expect(screen.getByTestId("bill-calendar").querySelectorAll(".bill.short").length).toBeGreaterThan(0);
+    await user.selectOptions(screen.getByLabelText(/^rent.* due day$/i), "3");
+    expect(screen.getByTestId("bill-rent")).toHaveTextContent(/wed/i);
+  });
+
+  it("levels up, tracks goals and projects compound growth", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getByRole("button", { name: /^goals & flex$/i }));
+    expect(screen.getByTestId("flex-level")).toHaveTextContent(/tracker/i);
+    expect(screen.getByTestId("flex-streak")).toHaveTextContent("6");
+    expect(screen.getByTestId("badge-lesson")).not.toHaveClass("on");
+
+    const rows = screen.getAllByTestId("goal-row");
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toHaveTextContent(/R760 \/ R2.?800/);
+    expect(rows[1]).toHaveTextContent(/finish the lesson/i);
+
+    const form = screen.getByTestId("goal-form");
+    await user.type(within(form).getByPlaceholderText(/school shoes/i), "School shoes");
+    await user.type(within(form).getByPlaceholderText("R0"), "600");
+    await user.click(within(form).getByRole("button", { name: /add goal/i }));
+    expect(screen.getAllByTestId("goal-row")).toHaveLength(3);
+    expect(screen.getAllByTestId("goal-row")[2]).toHaveTextContent(/school shoes/i);
+    await user.click(screen.getByRole("button", { name: /remove school shoes/i }));
+    expect(screen.getAllByTestId("goal-row")).toHaveLength(2);
+
+    expect(screen.getByTestId("milestone-10")).toHaveTextContent(/R\d/);
+    await user.click(screen.getByRole("radio", { name: /strong/i }));
+    expect(screen.getByRole("radio", { name: /strong/i })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("writes the 30-day money wrap offline", async () => {
+    const user = userEvent.setup();
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new Error("offline")));
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getAllByRole("button", { name: /^accounts$/i })[0]);
+    const wrap = screen.getByTestId("wrap");
+    expect(wrap).toHaveTextContent(/the survivor/i);
+    expect(wrap).toHaveTextContent("R4");
+    await user.click(within(wrap).getByTestId("wrap-write"));
+    expect(await screen.findByTestId("wrap-story")).toHaveTextContent(/buffer did its job/i);
+    vi.unstubAllGlobals();
+  });
+
   it("remembers closed weeks after signing out and back in", async () => {
     const user = userEvent.setup();
     const { unmount } = render(<App />);

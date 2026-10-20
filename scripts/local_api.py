@@ -1,4 +1,4 @@
-"""Local Python coach for Vite. Loads .env.local and serves /api/coach and /api/forecast."""
+"""Local Python API for Vite. Loads .env.local and serves /api/coach, /api/forecast and /api/wrap."""
 
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
@@ -11,6 +11,7 @@ sys.path.insert(0, str(API))
 
 from coach import handler as Coach  # noqa: E402
 from forecast import handler as Forecast  # noqa: E402
+from wrap import handler as Wrap  # noqa: E402
 
 
 def load_env():
@@ -39,6 +40,9 @@ class Router(BaseHTTPRequestHandler):
             return
         if self.path.startswith("/api/forecast"):
             Forecast.do_POST(self)
+            return
+        if self.path.startswith("/api/wrap"):
+            Wrap.do_POST(self)
             return
         self.send_error(404)
 
