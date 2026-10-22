@@ -1208,7 +1208,7 @@ function saveAccountPdf(t, money, accountId) {
     brand: t.brand,
     slogan: t.tag,
     paper: t.txPdfPaper,
-    who: [money.who, money.city].filter(Boolean).join(" · "),
+    who: [money.who, money.city].filter(Boolean).join(", "),
     pockets: [pocket],
     filename: `${accountId}-statement.pdf`,
   });
@@ -1219,7 +1219,7 @@ function saveAllPdfs(t, money) {
     brand: t.brand,
     slogan: t.tag,
     paper: t.txPdfPaper,
-    who: [money.who, money.city].filter(Boolean).join(" · "),
+    who: [money.who, money.city].filter(Boolean).join(", "),
     pockets: ACCOUNT_ORDER.map((id) => pocketStatement(t, money, id)),
     filename: "compound-confidence-statements.pdf",
   });
