@@ -145,6 +145,22 @@ describe("Compound Confidence dashboard", () => {
     expect(screen.getByTestId("account-page-savings")).toHaveTextContent("R860");
   });
 
+  it("downloads a PDF statement from an account", async () => {
+    const user = userEvent.setup();
+    const createObjectURL = vi.fn(() => "blob:statement");
+    const revokeObjectURL = vi.fn();
+    URL.createObjectURL = createObjectURL;
+    URL.revokeObjectURL = revokeObjectURL;
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getByTestId("account-main"));
+    await user.click(screen.getByTestId("download-pdf-main"));
+    expect(createObjectURL).toHaveBeenCalled();
+    const blob = createObjectURL.mock.calls[0][0];
+    expect(blob).toBeInstanceOf(Blob);
+    expect(blob.type).toBe("application/pdf");
+  });
+
   it("blocks moving more than the balance", async () => {
     const user = userEvent.setup();
     render(<App />);
@@ -153,6 +169,51 @@ describe("Compound Confidence dashboard", () => {
     await user.type(screen.getByLabelText(/amount/i), "5000");
     await user.click(screen.getByRole("button", { name: /^move$/i }));
     expect(screen.getByTestId("move-status")).toHaveTextContent(/not enough/i);
+    expect(screen.getByTestId("detail-balance")).toHaveTextContent("R180");
+  });
+
+  it("moves leftover along Savings → Main → Investments → Shares Zero", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await finishLesson(user);
+    await user.click(screen.getAllByRole("button", { name: /^accounts$/i })[0]);
+    const hub = screen.getByTestId("move-money-hub");
+    expect(hub).toHaveTextContent(/savings → main → investments → shares zero/i);
+
+    await user.selectOptions(within(hub).getByLabelText(/^from$/i), "savings");
+    await user.type(within(hub).getByLabelText(/^amount$/i), "50");
+    await user.click(within(hub).getByRole("button", { name: /^move$/i }));
+    expect(within(hub).getByTestId("move-status")).toHaveTextContent(/moved r50 to main/i);
+    expect(screen.getByTestId("account-page-main")).toHaveTextContent("R230");
+    expect(screen.getByTestId("account-page-savings")).toHaveTextContent("R710");
+
+    await user.selectOptions(within(hub).getByLabelText(/^from$/i), "main");
+    await user.selectOptions(within(hub).getByLabelText(/^to$/i), "invest");
+    await user.clear(within(hub).getByLabelText(/^amount$/i));
+    await user.type(within(hub).getByLabelText(/^amount$/i), "40");
+    await user.click(within(hub).getByRole("button", { name: /^move$/i }));
+    expect(within(hub).getByTestId("move-status")).toHaveTextContent(/moved r40 to investments/i);
+    expect(screen.getByTestId("account-page-invest")).toHaveTextContent("R40");
+
+    await user.selectOptions(within(hub).getByLabelText(/^from$/i), "invest");
+    await user.selectOptions(within(hub).getByLabelText(/^to$/i), "shares");
+    await user.clear(within(hub).getByLabelText(/^amount$/i));
+    await user.type(within(hub).getByLabelText(/^amount$/i), "40");
+    await user.click(within(hub).getByRole("button", { name: /^buy leftover$/i }));
+    expect(within(hub).getByTestId("move-status")).toHaveTextContent(/moved r40 to fnb top 40/i);
+  });
+
+  it("blocks parking leftover in Investments before the lesson", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getByTestId("account-main"));
+    const form = screen.getByTestId("move-money");
+    await user.selectOptions(within(form).getByLabelText(/^to$/i), "invest");
+    await user.type(within(form).getByLabelText(/^amount$/i), "40");
+    await user.click(within(form).getByRole("button", { name: /^move$/i }));
+    expect(within(form).getByTestId("move-status")).toHaveTextContent(/finish the leftover lesson/i);
     expect(screen.getByTestId("detail-balance")).toHaveTextContent("R180");
   });
 
@@ -353,9 +414,9 @@ describe("Compound Confidence dashboard", () => {
     await user.type(screen.getByPlaceholderText(/ask about your money/i), "Ngingatshala?");
     await user.click(screen.getByRole("button", { name: /^send$/i }));
     expect(await screen.findByText(/size lightly, bru/i)).toBeInTheDocument();
-    const [url, init] = fetchMock.mock.calls[0];
-    expect(url).toBe("/api/coach");
-    const body = JSON.parse(init.body);
+    const coachCall = fetchMock.mock.calls.find(([url]) => url === "/api/coach");
+    expect(coachCall).toBeTruthy();
+    const body = JSON.parse(coachCall[1].body);
     expect(body.question).toBe("Ngingatshala?");
     expect(body.desk.history).toHaveLength(6);
     vi.unstubAllGlobals();
@@ -396,6 +457,44 @@ describe("Compound Confidence dashboard", () => {
     await user.click(screen.getByTestId("close-week"));
     expect(screen.getByTestId("account-invest")).toHaveTextContent("R40");
     expect(screen.getByTestId("account-savings")).toHaveTextContent("R810");
+  });
+
+  it("opens Shares Zero from the home Investments card", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    expect(screen.getByTestId("market-teaser")).toHaveTextContent(/r0 a month/i);
+    await user.click(screen.getByTestId("account-invest"));
+    const page = screen.getByTestId("market-page");
+    expect(page).toHaveTextContent(/what shares zero is/i);
+    expect(page).toHaveTextContent(/0% brokerage on fnb etfs/i);
+    expect(page).toHaveTextContent(/only leftover parks here/i);
+    expect(within(page).getByTestId("market-board")).toBeInTheDocument();
+    expect(within(page).getByTestId("mkt-hint")).toHaveTextContent(/finish the etf lesson/i);
+  });
+
+  it("buys an ETF slice with leftover after the week closes", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await finishLesson(user);
+    await user.click(screen.getByRole("button", { name: /^the desk$/i }));
+    await user.click(screen.getByTestId("close-week"));
+    await user.click(screen.getByRole("button", { name: /^market$/i }));
+    const board = screen.getByTestId("market-board");
+    expect(within(board).getByTestId("invest-cash")).toHaveTextContent("R40");
+    expect(within(board).getByTestId("mkt-hint")).toHaveTextContent(/r40 leftover cash can buy a slice now/i);
+    expect(within(board).getByTestId("mkt-featured")).toHaveTextContent(/fnb top 40/i);
+    expect(within(board).getByTestId("invest-pnl")).toHaveTextContent(/^R0$/);
+    await user.type(within(board).getByLabelText(/r leftover etft40/i), "40");
+    await user.click(within(board).getAllByRole("button", { name: /buy leftover/i })[0]);
+    expect(within(board).getByText(/bought r40 of fnb top 40/i)).toBeInTheDocument();
+    expect(within(board).getByTestId("invest-cash")).toHaveTextContent("R0");
+    expect(within(board).getByTestId("invest-pnl")).toHaveTextContent(/^R0$/);
+    expect(within(board).getByTestId("invest-pnl")).not.toHaveTextContent("R-0");
+    expect(within(board).getByTestId("mkt-hint")).toHaveTextContent(/leftover is already in etfs/i);
+    expect(within(board).getByTestId("mkt-holdings")).toHaveTextContent(/fnb top 40/i);
+    expect(within(board).getByTestId("mkt-holdings")).toHaveTextContent(/units · ETFT40/i);
   });
 
   it("shows safe-to-spend and the next bills on the desk", async () => {

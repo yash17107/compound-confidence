@@ -1,4 +1,5 @@
 import { cleanAccounts } from "./accounts.js";
+import { leftoverCash } from "./holdings.js";
 import { packedProfile } from "./profile.js";
 import { roundRand } from "./money.js";
 
@@ -39,6 +40,21 @@ export function moneyOut({ date, item, label, amount, account = "main", unpaid =
 
 export function moneyMove({ date, from, to, amount, reason = "manual" }) {
   return { id: entryId(date), date, kind: "move", from, to, amount: money(amount), reason };
+}
+
+export function moneyTrade({ date, side, ticker, name, units, amount, price, pnl = 0 }) {
+  return {
+    id: entryId(date),
+    date,
+    kind: side,
+    account: "invest",
+    ticker,
+    label: name,
+    units: roundRand(Number(units) || 0),
+    amount: money(amount),
+    price: roundRand(Number(price) || 0),
+    pnl: roundRand(Number(pnl) || 0),
+  };
 }
 
 // Seeded weeks are ordered oldest first. Each one is paid in, covered, paid out, then split.
@@ -131,7 +147,7 @@ export function cleanLedger(ledger) {
     (entry) =>
       entry &&
       typeof entry.date === "string" &&
-      ["in", "out", "move"].includes(entry.kind) &&
+      ["in", "out", "move", "buy", "sell"].includes(entry.kind) &&
       Number(entry.amount) >= 0,
   );
 }
@@ -139,6 +155,8 @@ export function cleanLedger(ledger) {
 export function deltaFor(entry, accountId) {
   if (entry.kind === "in") return entry.account === accountId ? entry.amount : 0;
   if (entry.kind === "out") return entry.account === accountId ? -entry.amount : 0;
+  if (entry.kind === "buy") return 0;
+  if (entry.kind === "sell") return entry.account === accountId ? roundRand(Number(entry.pnl) || 0) : 0;
   if (entry.from === accountId) return -entry.amount;
   if (entry.to === accountId) return entry.amount;
   return 0;
@@ -158,7 +176,8 @@ export function accountStatement(ledger, accountId, balance, { today = new Date(
   for (let index = (ledger || []).length - 1; index >= 0; index -= 1) {
     const entry = ledger[index];
     const delta = deltaFor(entry, accountId);
-    if (delta === 0 || !inWindow(entry, today, days)) continue;
+    if (!inWindow(entry, today, days)) continue;
+    if (delta === 0 && entry.kind !== "buy" && entry.kind !== "sell") continue;
     rows.push({ ...entry, delta, balance: running });
     if (delta > 0) moneyInTotal += delta;
     else moneyOutTotal -= delta;
@@ -173,13 +192,68 @@ export function accountStatement(ledger, accountId, balance, { today = new Date(
   };
 }
 
-export function transfer(accounts, { from, to, amount, date = isoDay(new Date()) }) {
+export function moveDestinations(from) {
+  if (from === "main") return ["savings", "invest"];
+  if (from === "savings") return ["main"];
+  if (from === "invest") return ["shares", "main", "savings"];
+  return [];
+}
+
+export function parkedInvestOn(ledger, date = isoDay(new Date())) {
+  return roundRand(
+    (ledger || []).reduce((total, entry) => {
+      if (entry?.kind !== "move" || entry.to !== "invest" || entry.date !== date) return total;
+      return total + Number(entry.amount || 0);
+    }, 0),
+  );
+}
+
+export function investRoom({ leftover, forecast, ledger, date = isoDay(new Date()) }) {
+  const cap = Number(forecast?.investCap);
+  const ceiling = Number.isNaN(cap) ? Number(leftover) || 0 : Math.min(Number(leftover) || 0, cap);
+  return roundRand(Math.max(0, ceiling - parkedInvestOn(ledger, date)));
+}
+
+export function canMove({
+  from,
+  to,
+  amount,
+  accounts,
+  leftover,
+  lessonDone,
+  forecast,
+  holdings,
+  ledger,
+  date = isoDay(new Date()),
+}) {
+  if (!moveDestinations(from).includes(to)) {
+    return { ok: false, reason: from === "savings" && to === "invest" ? "buffer" : "same" };
+  }
+  const value = roundRand(Number(amount) || 0);
+  if (!(value > 0)) return { ok: false, reason: "amount" };
+
+  if (to === "shares") {
+    if (!lessonDone) return { ok: false, reason: "lesson" };
+    if (value > leftoverCash(accounts?.invest, holdings)) return { ok: false, reason: "funds" };
+    return { ok: true, kind: "buy" };
+  }
+
+  if (to === "invest") {
+    if (!lessonDone) return { ok: false, reason: "lesson" };
+    if (!(Number(leftover) > 0)) return { ok: false, reason: "no-leftover" };
+    if (value > investRoom({ leftover, forecast, ledger, date })) return { ok: false, reason: "cap" };
+  }
+
+  return { ok: true, kind: "move" };
+}
+
+export function transfer(accounts, { from, to, amount, date = isoDay(new Date()), available }) {
   const start = cleanAccounts(accounts);
   const value = roundRand(Number(amount) || 0);
   if (!(from in start) || !(to in start) || from === to) return { ok: false, reason: "same" };
-  if (to === "invest") return { ok: false, reason: "invest" };
   if (!(value > 0)) return { ok: false, reason: "amount" };
-  if (value > start[from]) return { ok: false, reason: "funds" };
+  const pocket = available == null ? start[from] : roundRand(Math.max(0, Number(available) || 0));
+  if (value > pocket || value > start[from]) return { ok: false, reason: "funds" };
   return {
     ok: true,
     accounts: {

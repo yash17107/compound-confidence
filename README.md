@@ -4,9 +4,17 @@ Hackathon demo for FNB App of the Year — **financial inclusion and money confi
 
 **Stack it, track it, flex it.** First pay life (rent, food, airtime, stokvel). Only leftover can become a paper FNB ETF. If leftover is R0, you sit. Sitting is the feature.
 
-Rails are mocked FNB products, not live bank APIs: Easy Zero → eWallet → Shares Zero. WhatsApp "guaranteed 30%" tips get blocked.
+Rails are mapped FNB products, not live bank APIs: Easy Zero → savings pocket → Shares Zero. Paper trading on live JSE prices. WhatsApp "guaranteed 30%" tips get blocked.
 
-## Try it
+## Judges
+
+- Live: https://house-money-omega.vercel.app
+- Git: https://github.com/yash17107/compound-confidence
+- Thabo: `thabo@imali.za` / `leftover180` (or **Continue as Thabo**)
+- Nomsa: `nomsa@imali.za` / `wages200`
+- Sonke pack: `docs/sonke-pack.html` · 10 slides: `docs/deck.html`
+
+## Try it locally
 
 ```bash
 npm install

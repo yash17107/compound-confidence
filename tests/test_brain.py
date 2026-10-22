@@ -6,6 +6,7 @@ from unittest import mock
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "api"))
 
 from _brain import coach as coach_mod  # noqa: E402
+from _brain import market as market_mod  # noqa: E402
 from _brain import wrap as wrap_mod  # noqa: E402
 from _brain.forecast import forecast_week, landing_odds, miss_primary_print  # noqa: E402
 
@@ -174,6 +175,31 @@ class MoneyWrap(unittest.TestCase):
         self.assertIn("Afrikaans", prompt)
         self.assertIn("never invent", prompt)
         self.assertIn("R2 800", wrap_mod._facts(wrap_mod.clean_wrap(THABO_WRAP)))
+
+
+class LeftoverMarket(unittest.TestCase):
+    def test_blocks_crypto(self):
+        result = market_mod.marketplace("BTC-USD")
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["reason"], "blocked")
+
+    def test_unknown_ticker_stays_off_the_board(self):
+        result = market_mod.marketplace("TSLA")
+        self.assertEqual(result["reason"], "unknown")
+
+    def test_offline_board_still_lists_the_fnb_etf(self):
+        with mock.patch.object(market_mod, "_yahoo", side_effect=ValueError("down")):
+            result = market_mod.marketplace()
+        self.assertTrue(result["ok"])
+        featured = next(row for row in result["board"] if row["featured"])
+        self.assertEqual(featured["code"], "ETFT40")
+        self.assertEqual(featured["source"], "offline")
+        self.assertGreater(featured["price"], 0)
+
+    def test_hot_tape_never_says_buy(self):
+        note = market_mod.tape_note([10, 11, 12, 13, 16])
+        self.assertEqual(note["heat"], "hot")
+        self.assertIn("Don't chase", note["note"])
 
 
 if __name__ == "__main__":

@@ -2,6 +2,10 @@ import { describe, expect, it } from "vitest";
 import {
   canAllocateInvest,
   confidenceOf,
+  displayAmount,
+  formatPct,
+  formatRand,
+  formatSignedRand,
   leftoverOf,
   splitTotals,
   validateSplit,
@@ -138,5 +142,18 @@ describe("confidenceOf", () => {
     });
     expect(result.score).toBe(3);
     expect(result.ready).toBe(true);
+  });
+});
+
+describe("formatRand", () => {
+  it("prints signed zero as R0", () => {
+    expect(formatRand(-0)).toBe("R0");
+    expect(formatSignedRand(-0.004)).toBe("R0");
+    expect(formatSignedRand(-0.4)).toBe("R0");
+    expect(displayAmount(-0.4)).toBe(0);
+    expect(formatSignedRand(0)).toBe("R0");
+    expect(formatSignedRand(12)).toBe("+R12");
+    expect(formatSignedRand(-8)).toBe("-R8");
+    expect(formatPct(-0)).toBe("0%");
   });
 });

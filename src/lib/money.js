@@ -79,11 +79,29 @@ export function canAllocateInvest({ leftover, split, lessonDone, forecast }) {
   return { ok: true };
 }
 
+export function displayAmount(value, digits = 0) {
+  const places = Math.max(0, Number(digits) || 0);
+  const factor = 10 ** places;
+  return Math.round((Number(value) || 0) * factor) / factor + 0;
+}
+
 export function formatRand(value, digits = 0) {
-  const amount = Number(value) || 0;
+  const amount = displayAmount(value, digits);
   const formatted = amount.toLocaleString("en-ZA", {
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   });
   return `R${formatted}`;
+}
+
+export function formatSignedRand(value, digits = 0) {
+  const amount = displayAmount(value, digits);
+  if (amount === 0) return formatRand(0, digits);
+  return `${amount > 0 ? "+" : "-"}${formatRand(Math.abs(amount), digits)}`;
+}
+
+export function formatPct(value) {
+  const amount = Math.round((Number(value) || 0) * 10) / 10;
+  if (amount === 0) return "0%";
+  return `${amount > 0 ? "+" : ""}${amount}%`;
 }

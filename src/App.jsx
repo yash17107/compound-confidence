@@ -18,7 +18,6 @@ import { appendWeek, forecastWeek, seededHistory, weekRecord } from "./lib/forec
 import {
   EMPTY_ACCOUNTS,
   cleanAccounts,
-  netWorth,
   settleWeek,
   startingAccounts,
   weeksOfRent,
@@ -28,6 +27,10 @@ import {
   appendEntries,
   cleanLedger,
   isoDay,
+  moneyTrade,
+  moveDestinations,
+  canMove,
+  investRoom,
   seededLedger,
   transfer,
   weekEntries,
@@ -47,6 +50,7 @@ import {
   confidenceOf,
   formatRand,
   leftoverOf,
+  roundRand,
   splitTotals,
   sumAmounts,
   validateSplit,
@@ -56,10 +60,14 @@ import { flexStats } from "./lib/flex.js";
 import { cleanGoals, defaultGoals, goalProgress, newGoal } from "./lib/goals.js";
 import { billCalendar, cleanSchedule, safeToSpend } from "./lib/safe.js";
 import { moneyWrap } from "./lib/wrap.js";
+import { buyHolding, leftoverCash, portfolioOf, quoteMap, sellHolding, cleanHoldings } from "./lib/holdings.js";
+import { loadMarket, offlineBoard } from "./lib/market.js";
 import { BillCalendar, FlexStrip, GrowPage, SafeSpendCard, WrapCard } from "./Grow.jsx";
+import { downloadAccountPdf } from "./lib/statementPdf.js";
+import { MarketPage, MarketTeaser } from "./Market.jsx";
 import "./App.css";
 
-const VIEWS = ["home", "week", "split", "learn", "accounts", "coach", "grow"];
+const VIEWS = ["home", "week", "split", "learn", "accounts", "coach", "grow", "market"];
 
 export default function App() {
   const [session, setSession] = useState(() => readSession());
@@ -81,6 +89,8 @@ export default function App() {
   const [openAccount, setOpenAccount] = useState(null);
   const [goals, setGoals] = useState([]);
   const [schedule, setSchedule] = useState(() => cleanSchedule());
+  const [holdings, setHoldings] = useState([]);
+  const [board, setBoard] = useState(() => offlineBoard());
 
   const t = COPY[lang] || COPY.en;
   const leftover = leftoverOf(income, obligated);
@@ -136,8 +146,20 @@ export default function App() {
     const savedGoals = progress.goals || record?.goals;
     setGoals(savedGoals ? cleanGoals(savedGoals) : defaultGoals(nextObligated));
     setSchedule(cleanSchedule(progress.schedule || record?.schedule));
+    setHoldings(cleanHoldings(progress.holdings || record?.holdings));
     setLastMoves(null);
     setOpenAccount(null);
+  }, [session?.email]);
+
+  useEffect(() => {
+    if (!session) return;
+    let on = true;
+    loadMarket().then((data) => {
+      if (on && data.ok) setBoard(data.board);
+    });
+    return () => {
+      on = false;
+    };
   }, [session?.email]);
 
   const forecast = useMemo(
@@ -175,6 +197,7 @@ export default function App() {
       ledger,
       goals,
       schedule,
+      holdings,
       ...patch,
     };
     saveProgress(session.email, snapshot);
@@ -192,6 +215,7 @@ export default function App() {
         ledger: snapshot.ledger,
         goals: snapshot.goals,
         schedule: snapshot.schedule,
+        holdings: snapshot.holdings,
       });
     }
   };
@@ -257,7 +281,25 @@ export default function App() {
   };
 
   const moveMoney = ({ from, to, amount }) => {
-    const result = transfer(accounts, { from, to, amount });
+    const planned = canMove({
+      from,
+      to,
+      amount,
+      accounts,
+      leftover,
+      lessonDone,
+      forecast,
+      holdings,
+      ledger,
+    });
+    if (!planned.ok) return planned;
+    if (to === "shares") {
+      const featured = board.find((row) => row.featured) || board[0];
+      if (!featured?.price) return { ok: false, reason: "price" };
+      return buySlice({ ticker: featured.ticker, amount, price: featured.price });
+    }
+    const available = from === "invest" ? leftoverCash(accounts.invest, holdings) : undefined;
+    const result = transfer(accounts, { from, to, amount, available });
     if (!result.ok) return result;
     const nextLedger = appendEntries(ledger, [result.entry]);
     setAccounts(result.accounts);
@@ -291,6 +333,39 @@ export default function App() {
     const next = cleanSchedule({ ...schedule, due: { ...schedule.due, [id]: day } });
     setSchedule(next);
     persistDesk({ schedule: next });
+  };
+
+  const buySlice = ({ ticker, amount, price }) => {
+    const result = buyHolding({
+      invest: accounts.invest,
+      holdings,
+      ticker,
+      amount,
+      price,
+      lessonDone,
+    });
+    if (!result.ok) return result;
+    const nextLedger = appendEntries(ledger, [
+      moneyTrade({ date: isoDay(new Date()), side: "buy", ...result.trade }),
+    ]);
+    setHoldings(result.holdings);
+    setLedger(nextLedger);
+    persistDesk({ holdings: result.holdings, ledger: nextLedger });
+    return result;
+  };
+
+  const sellSlice = ({ ticker, units, price }) => {
+    const result = sellHolding({ invest: accounts.invest, holdings, ticker, units, price });
+    if (!result.ok) return result;
+    const nextLedger = appendEntries(ledger, [
+      moneyTrade({ date: isoDay(new Date()), side: "sell", ...result.trade }),
+    ]);
+    const nextAccounts = { ...accounts, invest: result.accountsInvest };
+    setHoldings(result.holdings);
+    setAccounts(nextAccounts);
+    setLedger(nextLedger);
+    persistDesk({ holdings: result.holdings, accounts: nextAccounts, ledger: nextLedger });
+    return result;
   };
 
   const showAccount = (id) => {
@@ -355,6 +430,7 @@ export default function App() {
     setLedger(seededLedger(session.hustle));
     setGoals(defaultGoals(packed.obligated));
     setSchedule(cleanSchedule());
+    setHoldings([]);
     setOpenAccount(null);
     setLastMoves(null);
     setView("home");
@@ -373,6 +449,7 @@ export default function App() {
     setLedger([]);
     setGoals(defaultGoals(profile.obligated));
     setSchedule(cleanSchedule());
+    setHoldings([]);
     setLastMoves(null);
     saveProgress(session.email, {
       lessonDone: false,
@@ -384,6 +461,7 @@ export default function App() {
       accounts: EMPTY_ACCOUNTS,
       ledger: [],
       goals: defaultGoals(profile.obligated),
+      holdings: [],
     });
     setSession(result.session);
     setView("home");
@@ -436,6 +514,8 @@ export default function App() {
   }
 
   const preview = settleWeek(accounts, { moneyIn, moneyOut, split: settleSplit });
+  const quotes = quoteMap(board);
+  const portfolio = portfolioOf({ invest: accounts.invest, holdings, quotes });
   const goalRows = goalProgress(goals, accounts, {
     pace: { savings: preview.moves.toSavings, invest: preview.moves.toInvest },
     odds: forecast.odds,
@@ -461,10 +541,13 @@ export default function App() {
     forecast,
     weekClosed,
     accounts,
+    holdings,
+    board,
+    portfolio,
     lastMoves,
     ledger,
     openAccount,
-    worth: netWorth(accounts),
+    worth: roundRand(accounts.main + accounts.savings + portfolio.live),
     rentWeeks: weeksOfRent(accounts.savings, obligated),
     preview,
     goalRows,
@@ -479,6 +562,8 @@ export default function App() {
     safe: safeToSpend({ main: accounts.main, schedule, forecast }),
     bills: billCalendar({ obligated, moneyIn, savings: accounts.savings, schedule }),
     wrap: moneyWrap(ledger),
+    who: session.name,
+    city: session.city,
   };
 
   const actions = {
@@ -497,6 +582,8 @@ export default function App() {
     removeGoal,
     setPayday,
     setDueDay,
+    buySlice,
+    sellSlice,
   };
 
   return (
@@ -597,6 +684,11 @@ export default function App() {
           {view === "accounts" && (
             <AccountsPage t={t} lang={lang} money={money} actions={actions} htmlLang={htmlLang} />
           )}
+          {view === "market" && (
+            <MarketPage t={t} money={money} actions={actions}>
+              <MoveMoney t={t} money={money} actions={actions} accountId="invest" />
+            </MarketPage>
+          )}
           {view === "coach" && <Coach t={t} lang={lang} money={money} />}
           <p className="fine">{t.disclaimer}</p>
         </main>
@@ -606,7 +698,7 @@ export default function App() {
           ["home", t.dockDesk, "desk"],
           ["week", t.dockTape, "tape"],
           ["accounts", t.dockAccounts, "wallet"],
-          ["grow", t.dockGrow, "grow"],
+          ["market", t.dockMarket, "chart"],
           ["coach", t.dockCoach, "chat"],
         ].map(([id, label, icon]) => (
           <button
@@ -641,6 +733,7 @@ function DockIcon({ name }) {
     guide: "M6 5h12v14H6z M9 9h6 M9 13h6",
     wallet: "M4 7h16v12H4zM4 11h16",
     grow: "M5 19V14M10 19V11M15 19V8M4 10l6-4 4 3 6-5M16 4h4v4",
+    chart: "M4 19V11M10 19V7M16 19v-8M20 19V5",
     chat: "M5 6h14v9H10l-4 3v-3H5z",
     more: "M6 12h.01M12 12h.01M18 12h.01",
   };
@@ -1014,6 +1107,11 @@ function Coach({ t, lang, money }) {
 
 function Accounts({ t, money, actions }) {
   const after = money.preview.accounts;
+  const shown = {
+    main: money.accounts.main,
+    savings: money.accounts.savings,
+    invest: money.portfolio.live,
+  };
   const cards = [
     ["main", t.acctMain, t.acctMainSub],
     ["savings", t.acctSavings, t.acctSavingsSub],
@@ -1029,11 +1127,11 @@ function Accounts({ t, money, actions }) {
             type="button"
             className={`account ${id}`}
             data-testid={`account-${id}`}
-            aria-label={`${name} ${formatRand(money.accounts[id])}. ${t.txOpen}`}
-            onClick={() => actions.showAccount(id)}
+            aria-label={`${name} ${formatRand(shown[id])}. ${id === "invest" ? t.mktOpen : t.txOpen}`}
+            onClick={() => (id === "invest" ? actions.setView("market") : actions.showAccount(id))}
           >
             <span className="account-name">{name}</span>
-            <b>{formatRand(money.accounts[id])}</b>
+            <b>{formatRand(shown[id])}</b>
             <span className="account-sub">{sub}</span>
             {change !== 0 && (
               <span className={change > 0 ? "account-change up" : "account-change down"}>
@@ -1052,6 +1150,8 @@ function accountName(t, id) {
 }
 
 function txTitle(t, row) {
+  if (row.kind === "buy") return fill(t.txBuy, { name: row.label || row.ticker });
+  if (row.kind === "sell") return fill(t.txSell, { name: row.label || row.ticker });
   if (row.kind === "in" || row.kind === "out") {
     return t.items?.[row.item] || row.label || (row.item === "extra" ? t.extraGig : t.txOther);
   }
@@ -1060,6 +1160,8 @@ function txTitle(t, row) {
 }
 
 function txDetail(t, row, accountId) {
+  if (row.kind === "buy") return t.txBuyDetail;
+  if (row.kind === "sell") return fill(t.txSellDetail, { amount: formatRand(row.pnl) });
   if (row.kind === "in") return t.txIncome;
   if (row.kind === "out") {
     return row.unpaid > 0 ? fill(t.txUnpaid, { amount: formatRand(row.unpaid) }) : t.txBill;
@@ -1078,39 +1180,133 @@ function formatDay(iso, htmlLang) {
   });
 }
 
-function MoveMoney({ t, money, actions, accountId }) {
-  const others = ACCOUNT_ORDER.filter((id) => id !== accountId && id !== "invest");
-  const [to, setTo] = useState(others[0]);
+function pocketStatement(t, money, accountId) {
+  const book = money.accounts[accountId];
+  const statement = accountStatement(money.ledger, accountId, book);
+  const balance = accountId === "invest" ? money.portfolio.live : book;
+  return {
+    name: accountName(t, accountId),
+    rail: { main: t.easyZero, savings: t.ewallet, invest: t.sharesZero }[accountId],
+    balance: formatRand(balance),
+    moneyIn: `+${formatRand(statement.moneyIn)}`,
+    moneyOut: `-${formatRand(statement.moneyOut)}`,
+    opening: formatRand(statement.opening),
+    empty: accountId === "invest" ? t.txEmptyInvest : t.txEmpty,
+    rows: statement.rows.map((row) => ({
+      date: row.date,
+      title: txTitle(t, row),
+      detail: txDetail(t, row, accountId),
+      delta: row.delta,
+      balance: formatRand(row.balance),
+    })),
+  };
+}
+
+function saveAccountPdf(t, money, accountId) {
+  const pocket = pocketStatement(t, money, accountId);
+  return downloadAccountPdf({
+    brand: t.brand,
+    slogan: t.tag,
+    paper: t.txPdfPaper,
+    who: [money.who, money.city].filter(Boolean).join(" · "),
+    pockets: [pocket],
+    filename: `${accountId}-statement.pdf`,
+  });
+}
+
+function saveAllPdfs(t, money) {
+  return downloadAccountPdf({
+    brand: t.brand,
+    slogan: t.tag,
+    paper: t.txPdfPaper,
+    who: [money.who, money.city].filter(Boolean).join(" · "),
+    pockets: ACCOUNT_ORDER.map((id) => pocketStatement(t, money, id)),
+    filename: "compound-confidence-statements.pdf",
+  });
+}
+
+function destName(t, id) {
+  if (id === "shares") return t.txMoveShares;
+  return accountName(t, id);
+}
+
+function pocketAvailable(money, from) {
+  if (from === "invest") return leftoverCash(money.accounts.invest, money.holdings);
+  return money.accounts[from];
+}
+
+function MoveMoney({ t, money, actions, accountId, pickFrom = false }) {
+  const [fromPick, setFromPick] = useState(accountId);
+  const from = pickFrom ? fromPick : accountId;
+  const destinations = moveDestinations(from);
+  const [to, setTo] = useState(destinations[0]);
   const [amount, setAmount] = useState("");
   const [status, setStatus] = useState(null);
 
-  if (!others.length) return null;
+  const changeFrom = (id) => {
+    setFromPick(id);
+    setTo(moveDestinations(id)[0]);
+    setStatus(null);
+  };
 
+  if (!destinations.length) return null;
+  const destination = destinations.includes(to) ? to : destinations[0];
+
+  const available = pocketAvailable(money, from);
+  const room = investRoom({ leftover: money.leftover, forecast: money.forecast, ledger: money.ledger });
   const submit = (event) => {
     event.preventDefault();
-    const result = actions.moveMoney({ from: accountId, to, amount });
+    const result = actions.moveMoney({ from, to: destination, amount });
     if (result.ok) {
-      setStatus({ ok: true, text: fill(t.txMoved, { amount: formatRand(result.entry.amount), name: accountName(t, to) }) });
+      const moved = result.entry?.amount ?? result.trade?.amount;
+      const name = result.trade?.name || destName(t, destination);
+      setStatus({ ok: true, text: fill(t.txMoved, { amount: formatRand(moved), name }) });
       setAmount("");
     } else {
-      const reasons = { funds: t.txNoFunds, amount: t.txNoAmount, invest: t.txNoInvest };
+      const reasons = {
+        funds: t.txNoFunds,
+        amount: t.txNoAmount,
+        invest: t.txNoInvest,
+        lesson: t.txNoLesson,
+        "no-leftover": t.txNoLeftover,
+        cap: fill(t.txNoCap, { amount: formatRand(room) }),
+        buffer: t.txNoBuffer,
+        price: t.mktNoPrice,
+      };
       setStatus({ ok: false, text: reasons[result.reason] || t.txNoAmount });
     }
   };
 
   return (
-    <form className="card move-money" onSubmit={submit} data-testid="move-money">
+    <form
+      className="card move-money"
+      onSubmit={submit}
+      data-testid={pickFrom ? "move-money-hub" : "move-money"}
+    >
       <h2>{t.txMoveTitle}</h2>
       <p className="hint">
-        {fill(t.txMoveHint, { amount: formatRand(money.accounts[accountId]) })}
+        {fill(t.txMoveHint, { amount: formatRand(available) })}
+        {destination === "invest" ? ` ${fill(t.txNoCap, { amount: formatRand(room) })}` : ""}
       </p>
-      <div className="move-row">
+      <div className={`move-row${pickFrom ? " with-from" : ""}`}>
+        {pickFrom && (
+          <label>
+            <span>{t.txMoveFrom}</span>
+            <select value={from} onChange={(event) => changeFrom(event.target.value)} aria-label={t.txMoveFrom}>
+              {ACCOUNT_ORDER.map((id) => (
+                <option key={id} value={id}>
+                  {accountName(t, id)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           <span>{t.txMoveTo}</span>
-          <select value={to} onChange={(event) => setTo(event.target.value)} aria-label={t.txMoveTo}>
-            {others.map((id) => (
+          <select value={destination} onChange={(event) => setTo(event.target.value)} aria-label={t.txMoveTo}>
+            {destinations.map((id) => (
               <option key={id} value={id}>
-                {accountName(t, id)}
+                {destName(t, id)}
               </option>
             ))}
           </select>
@@ -1129,10 +1325,10 @@ function MoveMoney({ t, money, actions, accountId }) {
           />
         </label>
         <button className="btn primary" type="submit">
-          {t.txMoveBtn}
+          {destination === "shares" ? t.txMoveBuy : t.txMoveBtn}
         </button>
       </div>
-      {accountId !== "invest" && <p className="hint">{t.txInvestNote}</p>}
+      <p className="hint">{t.txInvestNote}</p>
       {status && (
         <p className={status.ok ? "ok" : "alert"} role="status" data-testid="move-status">
           {status.text}
@@ -1145,10 +1341,11 @@ function MoveMoney({ t, money, actions, accountId }) {
 const ACCOUNT_ORDER = ["main", "savings", "invest"];
 
 function AccountDetail({ t, money, actions, accountId, htmlLang }) {
-  const balance = money.accounts[accountId];
+  const book = money.accounts[accountId];
+  const balance = accountId === "invest" ? money.portfolio.live : book;
   const statement = useMemo(
-    () => accountStatement(money.ledger, accountId, balance),
-    [money.ledger, accountId, balance],
+    () => accountStatement(money.ledger, accountId, book),
+    [money.ledger, accountId, book],
   );
   const days = [];
   for (const row of statement.rows) {
@@ -1166,6 +1363,16 @@ function AccountDetail({ t, money, actions, accountId, htmlLang }) {
         </button>
         <h1>{accountName(t, accountId)}</h1>
         <p className="lede">{sub}</p>
+        <div className="actions">
+          <button
+            className="btn"
+            type="button"
+            data-testid={`download-pdf-${accountId}`}
+            onClick={() => saveAccountPdf(t, money, accountId)}
+          >
+            {t.txPdf}
+          </button>
+        </div>
       </div>
 
       <article className={`card account-hero ${accountId}`}>
@@ -1204,6 +1411,7 @@ function AccountDetail({ t, money, actions, accountId, htmlLang }) {
       </article>
 
       <MoveMoney key={accountId} t={t} money={money} actions={actions} accountId={accountId} />
+      {accountId === "invest" && <MarketTeaser t={t} money={money} actions={actions} />}
 
       <article className="card">
         <h2>{t.txTitle}</h2>
@@ -1343,6 +1551,7 @@ function Overview({ t, money, actions, htmlLang }) {
         <p className="lede">{t.overviewSub}</p>
       </div>
       <Accounts t={t} money={money} actions={actions} />
+      <MarketTeaser t={t} money={money} actions={actions} />
       <SafeSpendCard t={t} money={money} actions={actions} htmlLang={htmlLang} />
       <FlexStrip t={t} money={money} actions={actions} />
       <WeekSwitch t={t} money={money} actions={actions} />
@@ -1662,14 +1871,13 @@ function Learn({ t, money, actions }) {
             >
               {t.guideNext}
             </button>
+          ) : money.lessonDone ? (
+            <button className="btn primary" type="button" onClick={() => actions.setView("market")}>
+              {t.mktOpen}
+            </button>
           ) : (
-            <button
-              type="button"
-              className="btn primary"
-              onClick={actions.completeLesson}
-              disabled={money.lessonDone}
-            >
-              {money.lessonDone ? t.lessonDone : t.learned}
+            <button type="button" className="btn primary" onClick={actions.completeLesson}>
+              {t.learned}
             </button>
           )}
         </div>
@@ -1725,7 +1933,7 @@ function AccountsPage({ t, lang, money, actions, htmlLang }) {
       sub: t.acctInvestSub,
       rail: t.sharesZero,
       body: t.acctInvestBody,
-      now: money.accounts.invest,
+      now: money.portfolio.live,
       next: after.invest,
       thisWeek: fill(t.acctInvestIn, { amount: formatRand(move.toInvest) }),
     },
@@ -1738,12 +1946,18 @@ function AccountsPage({ t, lang, money, actions, htmlLang }) {
         <p className="lede">
           {t.acctWorth} {formatRand(money.worth)} · {t.leftover} {formatRand(Math.max(money.leftover, 0))}
         </p>
+        <div className="actions">
+          <button className="btn" type="button" data-testid="download-pdf-all" onClick={() => saveAllPdfs(t, money)}>
+            {t.txPdfAll}
+          </button>
+        </div>
       </div>
       <WrapCard t={t} lang={lang} money={money} />
       <article className="card fnb-story">
         <h2>{t.fnbInsideTitle}</h2>
         <p>{t.fnbInsideBody}</p>
       </article>
+      <MoveMoney t={t} money={money} actions={actions} accountId="main" pickFrom />
       {rows.map((row) => (
         <article key={row.id} className={`card account-detail ${row.id}`} data-testid={`account-page-${row.id}`}>
           <p className="kicker">{row.rail}</p>
@@ -1764,12 +1978,24 @@ function AccountsPage({ t, lang, money, actions, htmlLang }) {
             >
               {t.txOpen}
             </button>
+            <button
+              className="btn"
+              type="button"
+              data-testid={`download-pdf-${row.id}`}
+              onClick={() => saveAccountPdf(t, money, row.id)}
+            >
+              {t.txPdf}
+            </button>
+            {row.id === "invest" && (
+              <button className="btn primary" type="button" onClick={() => actions.setView("market")}>
+                {t.mktOpen}
+              </button>
+            )}
           </div>
         </article>
       ))}
+      <MarketTeaser t={t} money={money} actions={actions} />
       <article className="card">
-        <h2>{t.acctMarketTitle}</h2>
-        <p>{t.acctMarketBody}</p>
         <p className="hint">
           {ETF.name} · {ETF.code} · {t.feeBuy}
         </p>

@@ -3,7 +3,11 @@ import { settleWeek, startingAccounts } from "./accounts.js";
 import {
   accountStatement,
   appendEntries,
+  canMove,
   cleanLedger,
+  investRoom,
+  moveDestinations,
+  parkedInvestOn,
   seededLedger,
   transfer,
   weekEntries,
@@ -99,11 +103,73 @@ describe("transfer", () => {
     expect(result.entry).toMatchObject({ kind: "move", from: "main", to: "savings", amount: 100 });
   });
 
-  it("blocks overdrafts, same-account moves and side doors into Investments", () => {
+  it("blocks overdrafts, same-account moves and empty amounts", () => {
     expect(transfer(accounts, { from: "main", to: "savings", amount: 500 }).reason).toBe("funds");
     expect(transfer(accounts, { from: "main", to: "main", amount: 10 }).reason).toBe("same");
-    expect(transfer(accounts, { from: "savings", to: "invest", amount: 10 }).reason).toBe("invest");
     expect(transfer(accounts, { from: "main", to: "savings", amount: 0 }).reason).toBe("amount");
+  });
+
+  it("parks leftover from Main into Investments", () => {
+    const result = transfer(accounts, { from: "main", to: "invest", amount: 40, date: "2026-10-14" });
+    expect(result.ok).toBe(true);
+    expect(result.accounts).toEqual({ main: 140, savings: 760, invest: 40 });
+  });
+});
+
+describe("leftover path", () => {
+  const accounts = { main: 180, savings: 760, invest: 0 };
+  const forecast = { investCap: 40 };
+
+  it("routes Savings to Main, Main leftover to Investments, Investments leftover to Shares Zero", () => {
+    expect(moveDestinations("savings")).toEqual(["main"]);
+    expect(moveDestinations("main")).toEqual(["savings", "invest"]);
+    expect(moveDestinations("invest")).toEqual(["shares", "main", "savings"]);
+  });
+
+  it("keeps Savings off Investments", () => {
+    expect(
+      canMove({ from: "savings", to: "invest", amount: 40, accounts, leftover: 180, lessonDone: true, forecast }).reason,
+    ).toBe("buffer");
+  });
+
+  it("blocks Main leftover into Investments until the lesson is done", () => {
+    expect(
+      canMove({ from: "main", to: "invest", amount: 40, accounts, leftover: 180, lessonDone: false, forecast }).reason,
+    ).toBe("lesson");
+  });
+
+  it("caps leftover parked into Investments this week", () => {
+    const ledger = [{ kind: "move", to: "invest", amount: 40, date: "2026-10-14" }];
+    expect(parkedInvestOn(ledger, "2026-10-14")).toBe(40);
+    expect(investRoom({ leftover: 180, forecast, ledger, date: "2026-10-14" })).toBe(0);
+    expect(
+      canMove({
+        from: "main",
+        to: "invest",
+        amount: 40,
+        accounts,
+        leftover: 180,
+        lessonDone: true,
+        forecast,
+        ledger,
+        date: "2026-10-14",
+      }).reason,
+    ).toBe("cap");
+  });
+
+  it("lets leftover cash in Investments buy Shares Zero after the lesson", () => {
+    expect(
+      canMove({
+        from: "invest",
+        to: "shares",
+        amount: 40,
+        accounts: { main: 140, savings: 760, invest: 40 },
+        leftover: 180,
+        lessonDone: true,
+        forecast,
+        holdings: [],
+      }),
+    ).toMatchObject({ ok: true, kind: "buy" });
   });
 });
 
