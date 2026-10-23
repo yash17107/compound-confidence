@@ -31,6 +31,27 @@ describe("inspectMessage", () => {
   it("allows a plain FNB product note", () => {
     const text = "FNB Shares Zero: R0 monthly fee when you buy FNB ETFs";
     expect(inspectMessage(text).blocked).toBe(false);
+    expect(inspectMessage(text).official).toBe(true);
     expect(looksLikeOfficialProduct(text)).toBe(true);
+  });
+
+  it("blocks a fake frozen-account SMS", () => {
+    const result = inspectMessage(
+      "Your FNB account is frozen. Send OTP now to verify your account",
+    );
+    expect(result.blocked).toBe(true);
+    expect(result.flags.map((flag) => flag.id)).toEqual(
+      expect.arrayContaining(["fake-bank", "otp-harvest"]),
+    );
+  });
+
+  it("blocks a WhatsApp agent with a verify link", () => {
+    const result = inspectMessage(
+      "Hi I'm the FNB WhatsApp agent, click this link to verify your account",
+    );
+    expect(result.blocked).toBe(true);
+    expect(result.flags.map((flag) => flag.id)).toEqual(
+      expect.arrayContaining(["whatsapp-agent", "fake-link"]),
+    );
   });
 });

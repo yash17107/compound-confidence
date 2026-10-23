@@ -7,6 +7,13 @@ async function enterAsThabo(user) {
   await user.click(screen.getByTestId("demo-login"));
 }
 
+async function fillNewDesk(user, { name = "Yash", email = "yash@housemoney.za", password = "leftover300" } = {}) {
+  await user.type(screen.getByLabelText(/^full name$/i), name);
+  await user.type(screen.getByRole("textbox", { name: /^email$/i }), email);
+  await user.type(screen.getByLabelText(/^password$/i), password);
+  await user.click(screen.getByTestId("popia-consent"));
+}
+
 async function finishLesson(user) {
   await user.click(screen.getByRole("button", { name: /^learn$/i }));
   await user.click(screen.getByRole("button", { name: /next slide/i }));
@@ -19,12 +26,14 @@ async function finishLesson(user) {
 describe("Compound Confidence dashboard", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it("starts on the login screen", () => {
     render(<App />);
     expect(screen.getByRole("button", { name: /continue as thabo/i })).toBeInTheDocument();
     expect(screen.queryByTestId("leftover")).not.toBeInTheDocument();
+    expect(screen.getByTestId("popia-notice")).toHaveTextContent(/POPIA/i);
   });
 
   it("opens the dashboard after demo login", async () => {
@@ -33,6 +42,8 @@ describe("Compound Confidence dashboard", () => {
     await enterAsThabo(user);
     expect(screen.getByTestId("leftover")).toHaveTextContent("R180");
     expect(screen.getByText(/thabo m/i)).toBeInTheDocument();
+    expect(screen.getByTestId("week-pulse")).toHaveTextContent(/leftover lock on/i);
+    expect(screen.getByTestId("week-pulse")).toHaveTextContent("R180");
   });
 
   it("rejects a bad password", async () => {
@@ -74,7 +85,7 @@ describe("Compound Confidence dashboard", () => {
     await user.type(invest, "40");
     expect(screen.queryByTestId("split-status")).not.toBeInTheDocument();
     await user.click(screen.getByRole("button", { name: /^the desk$/i }));
-    expect(screen.getByTestId("confidence")).toHaveTextContent(/3\/3/);
+    expect(screen.getByTestId("confidence")).toHaveTextContent(/3\/4/);
     expect(screen.getByTestId("confidence")).toHaveTextContent(/you may size/i);
   });
 
@@ -84,7 +95,7 @@ describe("Compound Confidence dashboard", () => {
     await enterAsThabo(user);
     await user.selectOptions(screen.getByTestId("lang-select"), "af");
     expect(screen.getByRole("heading", { name: /die desk, hierdie week/i })).toBeInTheDocument();
-    expect(screen.getByText(/^huisgeld$/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^huisgeld$/i).length).toBeGreaterThan(0);
   });
 
   it("switches into isiXhosa and captioned SASL", async () => {
@@ -94,18 +105,19 @@ describe("Compound Confidence dashboard", () => {
     await user.selectOptions(screen.getByTestId("lang-select"), "xh");
     expect(screen.getByRole("heading", { name: /idesika, kule veki/i })).toBeInTheDocument();
     await user.selectOptions(screen.getByTestId("lang-select"), "sfs");
-    expect(screen.getByText(/sasl is visual/i)).toBeInTheDocument();
+    expect(screen.getByTestId("sasl-rail")).toHaveTextContent(/sasl is visual/i);
+    expect(screen.getByTestId("sasl-rail")).toHaveTextContent(/R180/);
   });
 
   it("lights the confidence meter after the lesson and sizing inside the cap", async () => {
     const user = userEvent.setup();
     render(<App />);
     await enterAsThabo(user);
-    expect(screen.getByTestId("confidence")).toHaveTextContent(/1\/3/);
+    expect(screen.getByTestId("confidence")).toHaveTextContent(/1\/4/);
     expect(screen.getByTestId("confidence")).toHaveTextContent(/ego stays on the bench/i);
     await finishLesson(user);
     await user.click(screen.getByRole("button", { name: /^the desk$/i }));
-    expect(screen.getByTestId("confidence")).toHaveTextContent(/2\/3/);
+    expect(screen.getByTestId("confidence")).toHaveTextContent(/2\/4/);
   });
 
   it("opens Accounts with main, savings and investments", async () => {
@@ -221,9 +233,7 @@ describe("Compound Confidence dashboard", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /new here\? open a desk/i }));
-    await user.type(screen.getByLabelText(/full name/i), "Yash");
-    await user.type(screen.getByLabelText(/email/i), "yash@housemoney.za");
-    await user.type(screen.getByLabelText(/password/i), "leftover300");
+    await fillNewDesk(user);
     await user.click(screen.getByRole("button", { name: /^open a desk$/i }));
     expect(screen.queryByRole("heading", { name: /what's the hustle/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^student$/i })).not.toBeInTheDocument();
@@ -248,9 +258,7 @@ describe("Compound Confidence dashboard", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /new here\? open a desk/i }));
-    await user.type(screen.getByLabelText(/full name/i), "Yash");
-    await user.type(screen.getByLabelText(/email/i), "yash@housemoney.za");
-    await user.type(screen.getByLabelText(/password/i), "leftover300");
+    await fillNewDesk(user);
     await user.click(screen.getByRole("button", { name: /^open a desk$/i }));
     await user.type(screen.getByLabelText(/city/i), "Durban");
     await user.click(screen.getByTestId("setup-next"));
@@ -268,9 +276,7 @@ describe("Compound Confidence dashboard", () => {
     expect(screen.getByRole("heading", { name: /^open a desk$/i })).toBeInTheDocument();
     expect(screen.queryByText("yash@housemoney.za")).not.toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/full name/i), "Yash");
-    await user.type(screen.getByLabelText(/email/i), "yash@housemoney.za");
-    await user.type(screen.getByLabelText(/password/i), "leftover300");
+    await fillNewDesk(user);
     await user.click(screen.getByRole("button", { name: /^open a desk$/i }));
     expect(screen.getByRole("heading", { name: /where's the desk/i })).toBeInTheDocument();
   });
@@ -279,9 +285,7 @@ describe("Compound Confidence dashboard", () => {
     const user = userEvent.setup();
     render(<App />);
     await user.click(screen.getByRole("button", { name: /new here\? open a desk/i }));
-    await user.type(screen.getByLabelText(/full name/i), "Yash");
-    await user.type(screen.getByLabelText(/email/i), "yash@housemoney.za");
-    await user.type(screen.getByLabelText(/password/i), "leftover300");
+    await fillNewDesk(user);
     await user.click(screen.getByRole("button", { name: /^open a desk$/i }));
     await user.click(screen.getByRole("button", { name: /open another desk/i }));
 
@@ -290,9 +294,7 @@ describe("Compound Confidence dashboard", () => {
     await user.click(screen.getByRole("button", { name: /^remove$/i }));
     expect(screen.queryByText("yash@housemoney.za")).not.toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/full name/i), "Yash");
-    await user.type(screen.getByLabelText(/email/i), "yash@housemoney.za");
-    await user.type(screen.getByLabelText(/password/i), "leftover300");
+    await fillNewDesk(user);
     await user.click(screen.getByRole("button", { name: /^open a desk$/i }));
     expect(screen.getByRole("heading", { name: /where's the desk/i })).toBeInTheDocument();
   });
@@ -419,6 +421,9 @@ describe("Compound Confidence dashboard", () => {
     const body = JSON.parse(coachCall[1].body);
     expect(body.question).toBe("Ngingatshala?");
     expect(body.desk.history).toHaveLength(6);
+    expect(body).not.toHaveProperty("email");
+    expect(body).not.toHaveProperty("name");
+    expect(body.desk.income[0]).not.toHaveProperty("label");
     vi.unstubAllGlobals();
   });
 
@@ -571,5 +576,39 @@ describe("Compound Confidence dashboard", () => {
     unmount();
     render(<App />);
     expect(screen.getByTestId("forecast-odds")).toHaveTextContent(/of the last 7 weeks/i);
+  });
+
+  it("catches an OTP scam and lights the rug check", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getAllByRole("button", { name: /test the scam shield/i })[0]);
+    expect(screen.getByTestId("scam-inbox")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /send me your otp/i }));
+    expect(screen.getByTestId("scam-result")).toHaveTextContent(/rug-pulled|otp|fishing/i);
+    await user.click(screen.getByRole("button", { name: /^the desk$/i }));
+    expect(screen.getByTestId("confidence")).toHaveTextContent(/2\/4/);
+    expect(screen.getByTestId("confidence")).toHaveTextContent(/rug check/i);
+  });
+
+  it("locks the desk behind a 4-digit PIN", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getByRole("button", { name: /^learn$/i }));
+    await user.click(screen.getByRole("tab", { name: /stay safe/i }));
+    expect(screen.getByTestId("popia-card")).toHaveTextContent(/protection of personal information/i);
+    await user.type(screen.getByTestId("pin-input"), "2580");
+    await user.type(screen.getByTestId("pin-confirm"), "2580");
+    await user.click(screen.getByRole("button", { name: /set a 4-digit pin/i }));
+    expect(screen.getByText(/pin saved/i)).toBeInTheDocument();
+    await user.click(within(screen.getByTestId("desk-pin")).getByRole("button", { name: /lock the desk/i }));
+    expect(screen.getByTestId("desk-lock")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /^2$/ }));
+    await user.click(screen.getByRole("button", { name: /^5$/ }));
+    await user.click(screen.getByRole("button", { name: /^8$/ }));
+    await user.click(screen.getByRole("button", { name: /^0$/ }));
+    expect(screen.queryByTestId("desk-lock")).not.toBeInTheDocument();
+    expect(screen.getByTestId("desk-pin")).toBeInTheDocument();
   });
 });

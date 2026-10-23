@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { blankCustomTape, leftoverFromCustom, newLine, suggestedSplit, tapeFromCustom } from "./lib/profile.js";
 import { formatRand } from "./lib/money.js";
-import { LANGS } from "./i18n.js";
+import LangSwitch from "./LangSwitch.jsx";
 
 const STEPS = ["city", "income", "bills", "review"];
 
@@ -72,16 +72,7 @@ export default function Setup({ t, lang, onLang, session, draft, onDone, onNewDe
           <h1>{t.setupTitle}</h1>
           <p>{t.setupSub}</p>
         </div>
-        <label className="lang-select dark">
-          <span className="sr-only">{t.language}</span>
-          <select aria-label="Language" value={lang} onChange={(event) => onLang(event.target.value)}>
-            {LANGS.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
-        </label>
+        <LangSwitch lang={lang} onLang={onLang} label={t.langNow || t.language} dark />
       </section>
       <section className="login-panel">
         <form className="login-card setup-card" onSubmit={submit}>

@@ -39,7 +39,7 @@ export function validateSplit(leftover, split) {
   return { ok: true, remaining: roundRand(leftover - total), total };
 }
 
-export function confidenceOf({ lessonDone, split, leftover, forecast }) {
+export function confidenceOf({ lessonDone, split, leftover, forecast, rugCaught }) {
   const dry = Math.max(Number(leftover) || 0, 0);
   const invest = Number(split?.invest || 0);
   const cap = Number(forecast?.investCap);
@@ -48,13 +48,15 @@ export function confidenceOf({ lessonDone, split, leftover, forecast }) {
     lesson: Boolean(lessonDone),
     buffer: leftover <= 0 ? true : hasEmergencyBuffer(split, dry),
     cap: leftover <= 0 || (splitCheck.ok && (Number.isNaN(cap) || invest <= cap)),
+    rug: Boolean(rugCaught),
   };
-  const score = Number(checks.lesson) + Number(checks.buffer) + Number(checks.cap);
+  const core = Number(checks.lesson) + Number(checks.buffer) + Number(checks.cap);
+  const score = core + Number(checks.rug);
   return {
     checks,
     score,
-    max: 3,
-    ready: score === 3,
+    max: 4,
+    ready: core === 3,
   };
 }
 

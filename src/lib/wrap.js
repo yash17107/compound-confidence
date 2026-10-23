@@ -1,5 +1,6 @@
 import { inWindow, WINDOW_DAYS } from "./ledger.js";
 import { formatRand, roundRand } from "./money.js";
+import { minimiseWrap } from "./privacy.js";
 
 export const VIBES = ["survivor", "compounder", "stacker", "starter"];
 
@@ -94,7 +95,7 @@ export async function askWrap({ wrap, lang, billName }) {
     const response = await fetch("/api/wrap", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ lang, wrap: { ...wrap, topBills: wrap.topBills.slice(0, 5) } }),
+      body: JSON.stringify({ lang, wrap: minimiseWrap(wrap) }),
     });
     const data = await response.json();
     if (response.ok && data.ok && data.summary) {

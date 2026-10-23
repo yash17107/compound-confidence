@@ -14,6 +14,8 @@ class handler(BaseHTTPRequestHandler):
         if not isinstance(data, dict):
             send_json(self, 400, {"ok": False, "reason": "bad-json"})
             return
+        for key in ("email", "name", "password", "pin", "otp", "city", "who"):
+            data.pop(key, None)
         result = coach(data.get("question"), data.get("desk"), str(data.get("lang") or "en"))
         send_json(self, 200 if result["ok"] else 400, result)
 

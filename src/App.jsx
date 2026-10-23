@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ETF } from "./data/demo.js";
-import { COPY, LANGS, fill, langMeta, readLang, saveLang } from "./i18n.js";
+import { COPY, fill, langMeta, readLang, saveLang } from "./i18n.js";
+import LangSwitch from "./LangSwitch.jsx";
+import Learn from "./Learn.jsx";
+import LockScreen from "./LockScreen.jsx";
 import {
   continueAsDemo,
   continueAsNomsa,
@@ -64,6 +67,7 @@ import { buyHolding, leftoverCash, portfolioOf, quoteMap, sellHolding, cleanHold
 import { loadMarket, offlineBoard } from "./lib/market.js";
 import { BillCalendar, FlexStrip, GrowPage, SafeSpendCard, WrapCard } from "./Grow.jsx";
 import { downloadAccountPdf } from "./lib/statementPdf.js";
+import { hasPin, IDLE_LOCK_MS } from "./lib/security.js";
 import { MarketPage, MarketTeaser } from "./Market.jsx";
 import "./App.css";
 
@@ -78,6 +82,10 @@ export default function App() {
   const [split, setSplit] = useState(DEMO_PROFILE.split);
   const [lessonDone, setLessonDone] = useState(false);
   const [lessonStep, setLessonStep] = useState(0);
+  const [rugCaught, setRugCaught] = useState(false);
+  const [learnTrack, setLearnTrack] = useState("lesson");
+  const [deskLocked, setDeskLocked] = useState(false);
+  const [lockTick, setLockTick] = useState(0);
   const [navOpen, setNavOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [authMode, setAuthMode] = useState("signin");
@@ -119,6 +127,9 @@ export default function App() {
 
     setLessonDone(Boolean(progress.lessonDone ?? record?.lessonDone));
     setLessonStep(Number(progress.lessonStep ?? record?.lessonStep) || 0);
+    setRugCaught(Boolean(progress.rugCaught ?? record?.rugCaught));
+    setLearnTrack("lesson");
+    setDeskLocked(false);
 
     const nextIncome = progress.income || record?.income || packed?.income || DEMO_PROFILE.income;
     const nextObligated =
@@ -171,6 +182,7 @@ export default function App() {
     split,
     leftover,
     forecast,
+    rugCaught,
   });
   const investCheck = canAllocateInvest({
     leftover: Math.max(leftover, 0),
@@ -189,6 +201,7 @@ export default function App() {
     const snapshot = {
       lessonDone,
       lessonStep,
+      rugCaught,
       income,
       obligated,
       split,
@@ -210,6 +223,7 @@ export default function App() {
         split: snapshot.split,
         lessonDone: snapshot.lessonDone,
         lessonStep: snapshot.lessonStep,
+        rugCaught: snapshot.rugCaught,
         history: snapshot.history,
         accounts: snapshot.accounts,
         ledger: snapshot.ledger,
@@ -424,6 +438,9 @@ export default function App() {
     setSplit(packed.split);
     setLessonDone(false);
     setLessonStep(0);
+    setRugCaught(false);
+    setLearnTrack("lesson");
+    setDeskLocked(false);
     setHistory(seededHistory(session.hustle));
     setWeekClosed(false);
     setAccounts(startingAccounts(session.hustle));
@@ -451,9 +468,12 @@ export default function App() {
     setSchedule(cleanSchedule());
     setHoldings([]);
     setLastMoves(null);
+    setRugCaught(false);
+    setLearnTrack("lesson");
     saveProgress(session.email, {
       lessonDone: false,
       lessonStep: 0,
+      rugCaught: false,
       income: profile.income,
       obligated: profile.obligated,
       split: profile.split,
@@ -472,16 +492,54 @@ export default function App() {
     setSession((prev) => ({ ...prev, setupDone: false }));
   };
 
+  const showLearn = (track = "lesson") => {
+    setLearnTrack(track);
+    setView("learn");
+    setOpenAccount(null);
+    setNavOpen(false);
+  };
+
   const go = (id) => {
+    if (id === "learn") {
+      showLearn("lesson");
+      return;
+    }
     setView(id);
     setOpenAccount(null);
     setNavOpen(false);
+  };
+
+  const catchRug = () => {
+    if (rugCaught) return;
+    setRugCaught(true);
+    persistDesk({ rugCaught: true });
   };
 
   useEffect(() => {
     document.body.classList.toggle("nav-open", navOpen);
     return () => document.body.classList.remove("nav-open");
   }, [navOpen]);
+
+  useEffect(() => {
+    if (!session || !hasPin(session.email) || deskLocked) return undefined;
+    let timer = window.setTimeout(() => setDeskLocked(true), IDLE_LOCK_MS);
+    const bump = () => {
+      window.clearTimeout(timer);
+      timer = window.setTimeout(() => setDeskLocked(true), IDLE_LOCK_MS);
+    };
+    const hide = () => {
+      if (document.visibilityState === "hidden") setDeskLocked(true);
+    };
+    window.addEventListener("pointerdown", bump);
+    window.addEventListener("keydown", bump);
+    document.addEventListener("visibilitychange", hide);
+    return () => {
+      window.clearTimeout(timer);
+      window.removeEventListener("pointerdown", bump);
+      window.removeEventListener("keydown", bump);
+      document.removeEventListener("visibilitychange", hide);
+    };
+  }, [session?.email, deskLocked, lockTick]);
 
   if (!session) {
     return (
@@ -564,6 +622,8 @@ export default function App() {
     wrap: moneyWrap(ledger),
     who: session.name,
     city: session.city,
+    rugCaught,
+    pinOn: hasPin(session.email),
   };
 
   const actions = {
@@ -574,7 +634,12 @@ export default function App() {
     changeSplit,
     completeLesson,
     setLessonStep,
+    setLearnTrack,
+    catchRug,
+    lockNow: () => setDeskLocked(true),
+    refreshLock: () => setLockTick((n) => n + 1),
     setView: go,
+    openShield: () => showLearn("scam"),
     showAccount,
     closeAccount: () => setOpenAccount(null),
     moveMoney,
@@ -586,8 +651,22 @@ export default function App() {
     sellSlice,
   };
 
+  const pinArmed = hasPin(session.email);
+
   return (
-    <div className="app">
+    <>
+      {deskLocked && pinArmed && (
+        <LockScreen
+          t={t}
+          lang={lang}
+          onLang={setLang}
+          name={session.name}
+          email={session.email}
+          onUnlock={() => setDeskLocked(false)}
+          onLogout={logout}
+        />
+      )}
+      <div className="app" aria-hidden={deskLocked && pinArmed ? true : undefined}>
       {navOpen && (
         <button className="scrim" type="button" aria-label={t.close} onClick={() => setNavOpen(false)} />
       )}
@@ -671,16 +750,30 @@ export default function App() {
               </span>
             </div>
           </div>
-          <LangSelect lang={lang} onLang={setLang} label={t.language} />
+          <div className="topbar-tools">
+            {pinArmed && (
+              <button
+                type="button"
+                className="lock-btn"
+                aria-label={t.secLockNow}
+                onClick={() => setDeskLocked(true)}
+              >
+                {t.secLockNow}
+              </button>
+            )}
+            <LangSwitch lang={lang} onLang={setLang} label={t.langNow || t.language} />
+          </div>
         </header>
 
         <main className="content">
-          {t.saslNote ? <p className="sasl-note">{t.saslNote}</p> : null}
+          {lang === "sfs" && <SaslRail t={t} money={money} />}
           {view === "home" && <Overview t={t} money={money} actions={actions} htmlLang={htmlLang} />}
           {view === "week" && <Week t={t} money={money} actions={actions} htmlLang={htmlLang} />}
           {view === "grow" && <GrowPage t={t} money={money} actions={actions} htmlLang={htmlLang} />}
           {view === "split" && <Split t={t} money={money} actions={actions} />}
-          {view === "learn" && <Learn t={t} money={money} actions={actions} />}
+          {view === "learn" && (
+            <Learn t={t} money={money} actions={actions} track={learnTrack} email={session.email} />
+          )}
           {view === "accounts" && (
             <AccountsPage t={t} lang={lang} money={money} actions={actions} htmlLang={htmlLang} />
           )}
@@ -723,6 +816,7 @@ export default function App() {
         </button>
       </nav>
     </div>
+    </>
   );
 }
 
@@ -744,23 +838,33 @@ function DockIcon({ name }) {
   );
 }
 
-function LangSelect({ lang, onLang, label, dark = false }) {
+
+function PrivacyNotice({ t }) {
   return (
-    <label className={dark ? "lang-select dark" : "lang-select"}>
-      <span className="sr-only">{label}</span>
-      <select
-        data-testid="lang-select"
-        aria-label="Language"
-        value={lang}
-        onChange={(event) => onLang(event.target.value)}
-      >
-        {LANGS.map((item) => (
-          <option key={item.id} value={item.id}>
-            {item.name}
-          </option>
-        ))}
-      </select>
-    </label>
+    <details className="popia-box" data-testid="popia-notice">
+      <summary>{t.popiaOpen}</summary>
+      <p className="lede">{t.popiaSub}</p>
+      <ul className="safe-list">
+        <li>
+          <strong>{t.popiaOnDevice}</strong>
+        </li>
+        <li>
+          <strong>{t.popiaNoShare}</strong>
+        </li>
+        <li>
+          <strong>{t.popiaCoach}</strong>
+        </li>
+        <li>
+          <strong>{t.popiaWipe}</strong>
+        </li>
+        <li>
+          <strong>{t.popiaDemo}</strong>
+        </li>
+        <li>
+          <strong>{t.popiaRights}</strong>
+        </li>
+      </ul>
+    </details>
   );
 }
 
@@ -769,6 +873,7 @@ function Login({ t, lang, onLang, onSession, initialMode = "signin" }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [consent, setConsent] = useState(false);
   const [error, setError] = useState("");
   const [accounts, setAccounts] = useState(listAccounts);
 
@@ -782,7 +887,7 @@ function Login({ t, lang, onLang, onSession, initialMode = "signin" }) {
     event.preventDefault();
     const result =
       mode === "signup"
-        ? signUp({ name, email, password })
+        ? signUp({ name, email, password, consent })
         : signIn(email, password);
     if (!result.ok) {
       fail(result.reason);
@@ -817,7 +922,7 @@ function Login({ t, lang, onLang, onSession, initialMode = "signin" }) {
           <h1>{t.brand}</h1>
           <p>{t.welcomeSub}</p>
         </div>
-        <LangSelect lang={lang} onLang={onLang} label={t.language} dark />
+        <LangSwitch lang={lang} onLang={onLang} label={t.langNow || t.language} dark />
       </section>
       <section className="login-panel">
         <form className="login-card" onSubmit={submit}>
@@ -870,6 +975,18 @@ function Login({ t, lang, onLang, onSession, initialMode = "signin" }) {
               autoComplete="current-password"
             />
           </label>
+          {mode === "signup" && (
+            <label className="consent-row">
+              <input
+                type="checkbox"
+                data-testid="popia-consent"
+                checked={consent}
+                onChange={(event) => setConsent(event.target.checked)}
+              />
+              <span>{t.popiaConsent}</span>
+            </label>
+          )}
+          <PrivacyNotice t={t} />
           {error && (
             <p className="alert" role="alert">
               {error}
@@ -1004,6 +1121,10 @@ function Coach({ t, lang, money }) {
   const badge = { ai: t.coachAi, rules: t.coachRules, offline: t.coachOffline };
 
   useEffect(() => {
+    setMessages([{ from: "desk", text: t.coachHello }]);
+  }, [t.coachHello]);
+
+  useEffect(() => {
     const node = thread.current;
     if (node && typeof node.scrollTo === "function") {
       node.scrollTo({ top: node.scrollHeight, behavior: "smooth" });
@@ -1019,6 +1140,7 @@ function Coach({ t, lang, money }) {
     const answer = await askCoach({
       question,
       lang,
+      t,
       income: money.income,
       obligated: money.obligated,
       history: money.history,
@@ -1540,6 +1662,62 @@ function ForecastCard({ t, money, actions }) {
   );
 }
 
+function weekCall(money) {
+  if (money.leftover <= 0 || money.forecast.call === "sit") return "sit";
+  return money.forecast.call === "light" ? "light" : "go";
+}
+
+function SaslRail({ t, money }) {
+  const call = weekCall(money);
+  const label = call === "sit" ? t.saslCallSit : call === "light" ? t.saslCallLight : t.saslCallGo;
+  return (
+    <aside className="sasl-rail" data-testid="sasl-rail">
+      <p className="sasl-note">{t.saslNote}</p>
+      <p className="sasl-call">
+        {label} · {formatRand(Math.max(money.leftover, 0))}
+      </p>
+      <p className="sasl-lock">{t.pulseLock}</p>
+    </aside>
+  );
+}
+
+function PulseCard({ t, money, actions }) {
+  const call = weekCall(money);
+  const cash = leftoverCash(money.accounts.invest, money.holdings);
+  const copy = call === "sit" ? t.pulseSit : call === "light" ? t.pulseLight : t.pulseGo;
+  let cta = { label: t.pulseCtaSit, go: () => actions.setView("week") };
+  if (call !== "sit") {
+    if (!money.lessonDone) cta = { label: t.pulseCtaLesson, go: () => actions.setView("learn") };
+    else if (cash > 0) cta = { label: t.pulseCtaBuy, go: () => actions.setView("market") };
+    else cta = { label: t.pulseCtaAlloc, go: () => actions.setView("split") };
+  }
+
+  return (
+    <article className={`pulse-card ${call}`} data-testid="week-pulse">
+      <p className="kicker">{t.pulseKicker}</p>
+      <h2>{copy}</h2>
+      <p className="pulse-leftover">
+        <span>{t.leftover}</span>
+        <b>{formatRand(money.leftover)}</b>
+      </p>
+      {call !== "sit" ? (
+        <p className="hint">
+          {fill(t.fcCap, {
+            cap: formatRand(money.forecast.investCap),
+            aside: formatRand(money.forecast.setAside),
+          })}
+        </p>
+      ) : null}
+      <p className="pulse-lock">{t.pulseLock}</p>
+      <div className="actions">
+        <button className="btn primary" type="button" onClick={cta.go}>
+          {cta.label}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function Overview({ t, money, actions, htmlLang }) {
   const leftoverSafe = Math.max(money.leftover, 0);
   const bar = (value) => `${leftoverSafe ? Math.min(100, (value / leftoverSafe) * 100) : 0}%`;
@@ -1550,6 +1728,7 @@ function Overview({ t, money, actions, htmlLang }) {
         <h1>{t.overviewTitle}</h1>
         <p className="lede">{t.overviewSub}</p>
       </div>
+      <PulseCard t={t} money={money} actions={actions} />
       <Accounts t={t} money={money} actions={actions} />
       <MarketTeaser t={t} money={money} actions={actions} />
       <SafeSpendCard t={t} money={money} actions={actions} htmlLang={htmlLang} />
@@ -1588,6 +1767,15 @@ function Overview({ t, money, actions, htmlLang }) {
       <ForecastCard t={t} money={money} actions={actions} />
       <LeftoverReceipt t={t} money={money} />
       <Confidence t={t} money={money} actions={actions} />
+      <article className="card shield-teaser">
+        <h2>{t.scamTitle}</h2>
+        <p className="lede">{t.scamTeaser}</p>
+        <div className="actions">
+          <button className="btn primary" type="button" onClick={actions.openShield}>
+            {t.openShield}
+          </button>
+        </div>
+      </article>
       <div className="grid-2">
         <article className="card">
           <h2>{t.weekTitle}</h2>
@@ -1639,6 +1827,7 @@ function Confidence({ t, money, actions }) {
         <li className={checks.lesson ? "on" : ""}>{t.confidenceLesson}</li>
         <li className={checks.buffer ? "on" : ""}>{t.confidenceBuffer}</li>
         <li className={checks.cap ? "on" : ""}>{t.confidenceCap}</li>
+        <li className={checks.rug ? "on" : ""}>{t.confidenceRug}</li>
       </ul>
       <div className="track">
         <i style={{ width: `${(score / max) * 100}%` }} />
@@ -1647,6 +1836,11 @@ function Confidence({ t, money, actions }) {
         {!checks.lesson && (
           <button className="btn" type="button" onClick={() => actions.setView("learn")}>
             {t.openLearn}
+          </button>
+        )}
+        {!checks.rug && (
+          <button className="btn" type="button" onClick={actions.openShield}>
+            {t.openShield}
           </button>
         )}
         {!checks.cap && (
@@ -1817,70 +2011,6 @@ function Split({ t, money, actions }) {
             {t.acctInvest}: {formatRand(after.invest)}
           </li>
         </ul>
-      </article>
-    </section>
-  );
-}
-
-function Learn({ t, money, actions }) {
-  const slides = t.guide || [];
-  const last = Math.max(slides.length - 1, 0);
-  const step = Math.min(money.lessonStep, last);
-  const slide = slides[step] || { title: t.learnTitle, body: t.lesson };
-
-  return (
-    <section>
-      <div className="page-head">
-        <h1>{t.learnTitle}</h1>
-        <p className="lede">
-          {t.guideLabel} {step + 1}/{slides.length || 1}
-        </p>
-      </div>
-      <article className="card">
-        <ol className="guide-dots" aria-hidden="true">
-          {slides.map((item, index) => (
-            <li key={item.title} className={index === step ? "on" : index < step ? "done" : ""} />
-          ))}
-        </ol>
-        <h2>{slide.title}</h2>
-        <p className="guide-body">{slide.body}</p>
-        <dl className="facts">
-          <div>
-            <dt>{t.product}</dt>
-            <dd>{ETF.name}</dd>
-          </div>
-          <div>
-            <dt>{t.fee}</dt>
-            <dd>{t.feeBuy}</dd>
-          </div>
-        </dl>
-        <div className="actions">
-          <button
-            className="btn"
-            type="button"
-            onClick={() => actions.setLessonStep((prev) => Math.max(prev - 1, 0))}
-            disabled={step === 0}
-          >
-            {t.back}
-          </button>
-          {step < last ? (
-            <button
-              className="btn primary"
-              type="button"
-              onClick={() => actions.setLessonStep((prev) => Math.min(prev + 1, last))}
-            >
-              {t.guideNext}
-            </button>
-          ) : money.lessonDone ? (
-            <button className="btn primary" type="button" onClick={() => actions.setView("market")}>
-              {t.mktOpen}
-            </button>
-          ) : (
-            <button type="button" className="btn primary" onClick={actions.completeLesson}>
-              {t.learned}
-            </button>
-          )}
-        </div>
       </article>
     </section>
   );

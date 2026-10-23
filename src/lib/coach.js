@@ -1,31 +1,48 @@
+import { COPY, fill } from "../i18n.js";
 import { formatRand } from "./money.js";
+import { minimiseDesk, minimiseQuestion } from "./privacy.js";
+import { inspectMessage } from "./scam.js";
 
 const CREDIT_WORDS = /\b(borrow|loan|mashonisa|credit card|lend|owe|payday)\b/i;
-const SCAM_WORDS = /\b(guaranteed|bitcoin|crypto|otp|double your|forex signal|pyramid)\b/i;
 
-export function localReply(question, leftover, forecast) {
+export function localReply(question, leftover, forecast, t = COPY.en) {
   if (CREDIT_WORDS.test(question)) {
-    return "No. Borrowed money is not leftover. Never put a loan or a mashonisa's money into shares.";
+    return t.coachCredit || COPY.en.coachCredit;
   }
-  if (SCAM_WORDS.test(question)) {
-    return "That smells like a scam. Nobody can guarantee returns, and FNB will never ask for your OTP. Don't send a rand.";
+  const scan = inspectMessage(question, t);
+  if (scan.blocked) {
+    return scan.headline;
   }
   if (leftover <= 0) {
-    return "Sit this week. There is no leftover after rent and bills, so there is nothing to invest. Sitting is how the account survives.";
+    return t.coachNoLeftover || COPY.en.coachNoLeftover;
   }
   if (forecast.call === "sit") {
-    return `You have ${formatRand(leftover)} leftover now, but your pattern says next week could squeeze the bills. Keep it in Main and Savings. Investment cap next week: R0.`;
+    return fill(t.coachSitPattern || COPY.en.coachSitPattern, {
+      leftover: formatRand(leftover),
+    });
   }
-  const lead = forecast.call === "light" ? "Size lightly." : "You may size, within the cap.";
-  return `${lead} Leftover this week is ${formatRand(leftover)}. Your main money landed ${forecast.landed} of the last ${forecast.weeks} weeks. Cap investments at ${formatRand(forecast.investCap)} and keep ${formatRand(forecast.setAside)} in Main and Savings.`;
+  const lead = forecast.call === "light" ? t.coachLightLead || COPY.en.coachLightLead : t.coachGoLead || COPY.en.coachGoLead;
+  return fill(t.coachSize || COPY.en.coachSize, {
+    lead,
+    leftover: formatRand(leftover),
+    landed: forecast.landed,
+    weeks: forecast.weeks,
+    cap: formatRand(forecast.investCap),
+    aside: formatRand(forecast.setAside),
+  });
 }
 
-export async function askCoach({ question, lang, income, obligated, history, leftover, forecast }) {
+export async function askCoach({ question, lang, income, obligated, history, leftover, forecast, t }) {
+  const copy = t || COPY[lang] || COPY.en;
   try {
     const response = await fetch("/api/coach", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question, lang, desk: { income, obligated, history } }),
+      body: JSON.stringify({
+        question: minimiseQuestion(question),
+        lang,
+        desk: minimiseDesk({ income, obligated, history }),
+      }),
     });
     const data = await response.json();
     if (response.ok && data.ok && data.reply) {
@@ -34,5 +51,5 @@ export async function askCoach({ question, lang, income, obligated, history, lef
   } catch {
     /* offline or no API: answer on the phone */
   }
-  return { reply: localReply(question, leftover, forecast), source: "offline" };
+  return { reply: localReply(question, leftover, forecast, copy), source: "offline" };
 }

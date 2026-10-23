@@ -28,4 +28,47 @@ describe("official languages", () => {
     expect(COPY.en.guide).toHaveLength(5);
     expect(COPY.zu.guide).toHaveLength(5);
   });
+
+  it("ships translated scam and stay-safe tracks in every pack", () => {
+    const reasonKeys = Object.keys(COPY.en.scamReasons).sort();
+    for (const lang of LANGS) {
+      expect(lang.short).toBeTruthy();
+      expect(COPY[lang.id].guide).toHaveLength(5);
+      expect(COPY[lang.id].scamGuide).toHaveLength(6);
+      expect(COPY[lang.id].safeRules).toHaveLength(6);
+      expect(Object.keys(COPY[lang.id].scamReasons).sort()).toEqual(reasonKeys);
+      expect(COPY[lang.id].learnTrackScam).toBeTruthy();
+      expect(COPY[lang.id].secLocked).toBeTruthy();
+    }
+    expect(COPY.af.learnTrackScam).toMatch(/swendel/i);
+    expect(COPY.zu.learnTrackScam).toMatch(/isihlangu|ubuqili/i);
+    expect(COPY.zu.guide[0].title).not.toEqual(COPY.en.guide[0].title);
+  });
+
+  it("ships a POPIA notice in every pack", () => {
+    for (const lang of LANGS) {
+      expect(COPY[lang.id].popiaConsent).toBeTruthy();
+      expect(COPY[lang.id].popiaRules).toHaveLength(6);
+    }
+    expect(COPY.af.popiaTitle).toMatch(/POPIA/i);
+    expect(COPY.zu.popiaWipe).toMatch(/POPIA|lungelo/i);
+  });
+
+  it("translates judge-facing leftover copy out of English", () => {
+    const spoken = ["af", "zu", "xh", "nr", "ss", "st", "nso", "tn", "ts", "ve"];
+    for (const id of spoken) {
+      expect(COPY[id].nav).toHaveLength(8);
+      expect(COPY[id].nav[6]).not.toEqual(COPY.en.nav[6]);
+      expect(COPY[id].acctMain).not.toEqual(COPY.en.acctMain);
+      expect(COPY[id].sitTitle).not.toEqual(COPY.en.sitTitle);
+      expect(COPY[id].fcSit).not.toEqual(COPY.en.fcSit);
+      expect(COPY[id].coachTitle).not.toEqual(COPY.en.coachTitle);
+      expect(COPY[id].missGig).not.toEqual(COPY.en.missGig);
+      expect(COPY[id].pulseSit).not.toEqual(COPY.en.pulseSit);
+      expect(COPY[id].popiaRules[0].title).not.toEqual(COPY.en.popiaRules[0].title);
+      expect(COPY[id].mktOpen).not.toEqual(COPY.en.mktOpen);
+    }
+    expect(COPY.sfs.sitTitle).not.toEqual(COPY.en.sitTitle);
+    expect(COPY.sfs.saslCallSit).toMatch(/sit/i);
+  });
 });

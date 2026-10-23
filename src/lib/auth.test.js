@@ -1,9 +1,11 @@
 import { describe, expect, it, beforeEach } from "vitest";
 import { continueAsDemo, continueAsNomsa, deleteAccount, listAccounts, readSession, signIn, signOut, signUp } from "./auth.js";
+import { dumpStorage } from "./vault.js";
 
 describe("auth", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
   });
 
   it("signs in the Thabo demo account", () => {
@@ -21,6 +23,7 @@ describe("auth", () => {
       name: "Aisha K.",
       email: "aisha@imali.za",
       password: "safebuffer",
+      consent: true,
     });
     expect(result.ok).toBe(true);
     expect(readSession().email).toBe("aisha@imali.za");
@@ -34,7 +37,7 @@ describe("auth", () => {
   });
 
   it("deletes a saved desk so the email can be used again", () => {
-    signUp({ name: "Aisha K.", email: "aisha@imali.za", password: "safebuffer" });
+    signUp({ name: "Aisha K.", email: "aisha@imali.za", password: "safebuffer", consent: true });
     expect(deleteAccount("aisha@imali.za").ok).toBe(true);
     expect(listAccounts()).toHaveLength(0);
     expect(readSession()).toBeNull();
@@ -42,6 +45,7 @@ describe("auth", () => {
       name: "Aisha K.",
       email: "aisha@imali.za",
       password: "safebuffer",
+      consent: true,
     });
     expect(again.ok).toBe(true);
   });
@@ -60,7 +64,30 @@ describe("auth", () => {
         name: "Copycat",
         email: "nomsa@imali.za",
         password: "safebuffer",
+        consent: true,
       }).ok,
     ).toBe(false);
+  });
+
+  it("needs POPIA consent before a desk is created", () => {
+    expect(
+      signUp({
+        name: "Aisha K.",
+        email: "aisha@imali.za",
+        password: "safebuffer",
+      }).reason,
+    ).toBe("consent");
+  });
+
+  it("never stores a password in the clear", () => {
+    signUp({
+      name: "Aisha K.",
+      email: "aisha@imali.za",
+      password: "safebuffer",
+      consent: true,
+    });
+    const stored = dumpStorage();
+    expect(stored).not.toMatch(/safebuffer/);
+    expect(stored).toMatch(/passHash/);
   });
 });

@@ -41,6 +41,16 @@ export const SCAM_SAMPLES = [
     text: "Send me your OTP so I can unlock Shares Zero",
   },
   {
+    id: "frozen",
+    from: "SMS · FNB-not-FNB",
+    text: "Your FNB account is frozen. Send OTP now to verify your account",
+  },
+  {
+    id: "agent",
+    from: "WhatsApp · FNB agent",
+    text: "Hi I'm the FNB WhatsApp agent, click this link to verify your account",
+  },
+  {
     id: "official",
     from: "FNB · actual product note",
     text: "FNB Shares Zero: R0 monthly fee when you buy FNB ETFs",

@@ -141,6 +141,20 @@ describe("confidenceOf", () => {
       forecast: lightForecast,
     });
     expect(result.score).toBe(3);
+    expect(result.max).toBe(4);
+    expect(result.ready).toBe(true);
+  });
+
+  it("lights the rug check without blocking leftover investing", () => {
+    const result = confidenceOf({
+      lessonDone: true,
+      split: { hold: 90, save: 50, invest: 40 },
+      leftover: 180,
+      forecast: lightForecast,
+      rugCaught: true,
+    });
+    expect(result.score).toBe(4);
+    expect(result.checks.rug).toBe(true);
     expect(result.ready).toBe(true);
   });
 });
