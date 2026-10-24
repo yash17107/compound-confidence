@@ -70,5 +70,7 @@ describe("official languages", () => {
     }
     expect(COPY.sfs.sitTitle).not.toEqual(COPY.en.sitTitle);
     expect(COPY.sfs.saslCallSit).toMatch(/sit/i);
+    expect(COPY.af.walkStart).not.toEqual(COPY.en.walkStart);
+    expect(COPY.zu.appLive).toMatch(/Vercel/i);
   });
 });

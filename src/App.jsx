@@ -99,6 +99,15 @@ export default function App() {
   const [schedule, setSchedule] = useState(() => cleanSchedule());
   const [holdings, setHoldings] = useState([]);
   const [board, setBoard] = useState(() => offlineBoard());
+  const [walkStep, setWalkStep] = useState(0);
+  const [installEvent, setInstallEvent] = useState(null);
+  const [installed, setInstalled] = useState(() => {
+    try {
+      return window.matchMedia("(display-mode: standalone)").matches;
+    } catch {
+      return false;
+    }
+  });
 
   const t = COPY[lang] || COPY.en;
   const leftover = leftoverOf(income, obligated);
@@ -120,6 +129,34 @@ export default function App() {
   }, [htmlLang]);
 
   useEffect(() => {
+    const onPrompt = (event) => {
+      event.preventDefault();
+      setInstallEvent(event);
+    };
+    const onInstalled = () => {
+      setInstalled(true);
+      setInstallEvent(null);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const installApp = async () => {
+    if (!installEvent || typeof installEvent.prompt !== "function") return;
+    installEvent.prompt();
+    try {
+      await installEvent.userChoice;
+    } catch {
+      /* user dismissed */
+    }
+    setInstallEvent(null);
+  };
+
+  useEffect(() => {
     if (!session) return;
     const progress = readProgress(session.email) || {};
     const packed = session.demo ? packedProfile(session.hustle) : null;
@@ -130,6 +167,7 @@ export default function App() {
     setRugCaught(Boolean(progress.rugCaught ?? record?.rugCaught));
     setLearnTrack("lesson");
     setDeskLocked(false);
+    setWalkStep(0);
 
     const nextIncome = progress.income || record?.income || packed?.income || DEMO_PROFILE.income;
     const nextObligated =
@@ -548,6 +586,9 @@ export default function App() {
         lang={lang}
         onLang={setLang}
         initialMode={authMode}
+        canInstall={Boolean(installEvent)}
+        installed={installed}
+        onInstall={installApp}
         onSession={(next) => {
           setSession(next);
           setView("home");
@@ -624,6 +665,7 @@ export default function App() {
     city: session.city,
     rugCaught,
     pinOn: hasPin(session.email),
+    walkStep,
   };
 
   const actions = {
@@ -649,6 +691,7 @@ export default function App() {
     setDueDay,
     buySlice,
     sellSlice,
+    setWalkStep,
   };
 
   const pinArmed = hasPin(session.email);
@@ -761,6 +804,11 @@ export default function App() {
                 {t.secLockNow}
               </button>
             )}
+            {installEvent ? (
+              <button type="button" className="btn ghost install-btn" onClick={installApp}>
+                {t.installApp}
+              </button>
+            ) : null}
             <LangSwitch lang={lang} onLang={setLang} label={t.langNow || t.language} />
           </div>
         </header>
@@ -868,7 +916,7 @@ function PrivacyNotice({ t }) {
   );
 }
 
-function Login({ t, lang, onLang, onSession, initialMode = "signin" }) {
+function Login({ t, lang, onLang, onSession, initialMode = "signin", canInstall = false, installed = false, onInstall }) {
   const [mode, setMode] = useState(initialMode);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -921,6 +969,15 @@ function Login({ t, lang, onLang, onSession, initialMode = "signin" }) {
           <p className="tag">{t.tag}</p>
           <h1>{t.brand}</h1>
           <p>{t.welcomeSub}</p>
+          <p className="app-live" data-testid="app-live">
+            {t.appLive}
+          </p>
+          {installed ? <p className="app-live">{t.installedApp}</p> : null}
+          {canInstall && !installed ? (
+            <button type="button" className="btn primary install-btn" onClick={onInstall}>
+              {t.installApp}
+            </button>
+          ) : null}
         </div>
         <LangSwitch lang={lang} onLang={onLang} label={t.langNow || t.language} dark />
       </section>
@@ -1681,6 +1738,48 @@ function SaslRail({ t, money }) {
   );
 }
 
+function JudgeWalk({ t, money, actions }) {
+  const step = Math.min(Math.max(money.walkStep || 0, 0), 5);
+  const lines = [t.walk1, t.walk2, t.walk3, t.walk4, t.walk5, t.walk6];
+  const next = () => {
+    if (step === 1) actions.missPrint();
+    if (step === 2) actions.restorePrint();
+    if (step === 3) {
+      actions.setWalkStep(4);
+      actions.setView("learn");
+      return;
+    }
+    if (step === 4) {
+      actions.setWalkStep(5);
+      actions.setView("split");
+      return;
+    }
+    if (step === 5) {
+      actions.setView("market");
+      return;
+    }
+    actions.setWalkStep(step + 1);
+  };
+
+  return (
+    <article className="walk-card" data-testid="judge-walk">
+      <h2>{t.walkTitle}</h2>
+      <ol>
+        {lines.map((line, index) => (
+          <li key={index} className={index === step ? "on" : index < step ? "done" : ""}>
+            {line}
+          </li>
+        ))}
+      </ol>
+      <div className="actions">
+        <button className="btn primary" type="button" data-testid="judge-walk-next" onClick={next}>
+          {step === 0 ? t.walkStart : t.walkNext}
+        </button>
+      </div>
+    </article>
+  );
+}
+
 function PulseCard({ t, money, actions }) {
   const call = weekCall(money);
   const cash = leftoverCash(money.accounts.invest, money.holdings);
@@ -1698,7 +1797,7 @@ function PulseCard({ t, money, actions }) {
       <h2>{copy}</h2>
       <p className="pulse-leftover">
         <span>{t.leftover}</span>
-        <b>{formatRand(money.leftover)}</b>
+        <b data-testid="leftover">{formatRand(money.leftover)}</b>
       </p>
       {call !== "sit" ? (
         <p className="hint">
@@ -1731,85 +1830,78 @@ function Overview({ t, money, actions, htmlLang }) {
       <PulseCard t={t} money={money} actions={actions} />
       <Accounts t={t} money={money} actions={actions} />
       <MarketTeaser t={t} money={money} actions={actions} />
-      <SafeSpendCard t={t} money={money} actions={actions} htmlLang={htmlLang} />
-      <FlexStrip t={t} money={money} actions={actions} />
       <WeekSwitch t={t} money={money} actions={actions} />
-      <article className="walk-card">
-        <h2>{t.walkTitle}</h2>
-        <ol>
-          <li>{t.walk1}</li>
-          <li>{t.walk2}</li>
-          <li>{t.walk3}</li>
-          <li>{t.walk4}</li>
-          <li>{t.walk5}</li>
-          <li>{t.walk6}</li>
-        </ol>
-      </article>
-      {money.leftover <= 0 && <SitCard t={t} />}
-      <div className="kpis">
-        <article className={money.leftover <= 0 ? "kpi accent sit" : "kpi accent"}>
-          <span>{t.leftover}</span>
-          <b data-testid="leftover">{formatRand(money.leftover)}</b>
-        </article>
-        <article className="kpi">
-          <span>{t.in}</span>
-          <b>{formatRand(money.moneyIn)}</b>
-        </article>
-        <article className="kpi">
-          <span>{t.out}</span>
-          <b>{formatRand(money.moneyOut)}</b>
-        </article>
-        <article className="kpi">
-          <span>{t.acctWorth}</span>
-          <b data-testid="net-worth">{formatRand(money.worth)}</b>
-        </article>
-      </div>
-      <ForecastCard t={t} money={money} actions={actions} />
-      <LeftoverReceipt t={t} money={money} />
+      <JudgeWalk t={t} money={money} actions={actions} />
       <Confidence t={t} money={money} actions={actions} />
-      <article className="card shield-teaser">
-        <h2>{t.scamTitle}</h2>
-        <p className="lede">{t.scamTeaser}</p>
-        <div className="actions">
-          <button className="btn primary" type="button" onClick={actions.openShield}>
-            {t.openShield}
-          </button>
+      <details className="more-desk">
+        <summary>{t.moreOnDesk}</summary>
+        <SafeSpendCard t={t} money={money} actions={actions} htmlLang={htmlLang} />
+        <FlexStrip t={t} money={money} actions={actions} />
+        {money.leftover <= 0 && <SitCard t={t} />}
+        <div className="kpis">
+          <article className={money.leftover <= 0 ? "kpi accent sit" : "kpi accent"}>
+            <span>{t.leftover}</span>
+            <b>{formatRand(money.leftover)}</b>
+          </article>
+          <article className="kpi">
+            <span>{t.in}</span>
+            <b>{formatRand(money.moneyIn)}</b>
+          </article>
+          <article className="kpi">
+            <span>{t.out}</span>
+            <b>{formatRand(money.moneyOut)}</b>
+          </article>
+          <article className="kpi">
+            <span>{t.acctWorth}</span>
+            <b data-testid="net-worth">{formatRand(money.worth)}</b>
+          </article>
         </div>
-      </article>
-      <div className="grid-2">
-        <article className="card">
-          <h2>{t.weekTitle}</h2>
-          <Ledger t={t} money={money} />
+        <ForecastCard t={t} money={money} actions={actions} />
+        <LeftoverReceipt t={t} money={money} />
+        <article className="card shield-teaser">
+          <h2>{t.scamTitle}</h2>
+          <p className="lede">{t.scamTeaser}</p>
           <div className="actions">
-            <button className="btn" type="button" onClick={actions.addGig} disabled={money.extraGig}>
-              {t.addGig}
-            </button>
-            <button className="btn primary" type="button" onClick={() => actions.setView("week")}>
-              {t.openWeek}
+            <button className="btn primary" type="button" onClick={actions.openShield}>
+              {t.openShield}
             </button>
           </div>
         </article>
-        <article className="card">
-          <h2>{t.splitTitle}</h2>
-          <div className="bars">
-            <Bar label={t.hold} value={money.split.hold} width={bar(money.split.hold)} kind="hold" />
-            <Bar label={t.save} value={money.split.save} width={bar(money.split.save)} kind="save" />
-            <Bar label={t.invest} value={money.split.invest} width={bar(money.split.invest)} kind="invest" />
-          </div>
-          <p className="hint">
-            {t.used} {formatRand(money.assigned)} · {t.remaining}{" "}
-            {formatRand(Math.max(leftoverSafe - money.assigned, 0))}
-          </p>
-          <div className="actions">
-            <button className="btn" type="button" onClick={() => actions.setView("split")}>
-              {t.openSplit}
-            </button>
-            <button className="btn primary" type="button" onClick={() => actions.setView("accounts")}>
-              {t.openRails}
-            </button>
-          </div>
-        </article>
-      </div>
+        <div className="grid-2">
+          <article className="card">
+            <h2>{t.weekTitle}</h2>
+            <Ledger t={t} money={money} />
+            <div className="actions">
+              <button className="btn" type="button" onClick={actions.addGig} disabled={money.extraGig}>
+                {t.addGig}
+              </button>
+              <button className="btn primary" type="button" onClick={() => actions.setView("week")}>
+                {t.openWeek}
+              </button>
+            </div>
+          </article>
+          <article className="card">
+            <h2>{t.splitTitle}</h2>
+            <div className="bars">
+              <Bar label={t.hold} value={money.split.hold} width={bar(money.split.hold)} kind="hold" />
+              <Bar label={t.save} value={money.split.save} width={bar(money.split.save)} kind="save" />
+              <Bar label={t.invest} value={money.split.invest} width={bar(money.split.invest)} kind="invest" />
+            </div>
+            <p className="hint">
+              {t.used} {formatRand(money.assigned)} · {t.remaining}{" "}
+              {formatRand(Math.max(leftoverSafe - money.assigned, 0))}
+            </p>
+            <div className="actions">
+              <button className="btn" type="button" onClick={() => actions.setView("split")}>
+                {t.openSplit}
+              </button>
+              <button className="btn primary" type="button" onClick={() => actions.setView("accounts")}>
+                {t.openRails}
+              </button>
+            </div>
+          </article>
+        </div>
+      </details>
     </section>
   );
 }

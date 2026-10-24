@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import App from "./App.jsx";
@@ -34,6 +34,7 @@ describe("Compound Confidence dashboard", () => {
     expect(screen.getByRole("button", { name: /continue as thabo/i })).toBeInTheDocument();
     expect(screen.queryByTestId("leftover")).not.toBeInTheDocument();
     expect(screen.getByTestId("popia-notice")).toHaveTextContent(/POPIA/i);
+    expect(screen.getByTestId("app-live")).toHaveTextContent(/live web app on vercel/i);
   });
 
   it("opens the dashboard after demo login", async () => {
@@ -44,6 +45,28 @@ describe("Compound Confidence dashboard", () => {
     expect(screen.getByText(/thabo m/i)).toBeInTheDocument();
     expect(screen.getByTestId("week-pulse")).toHaveTextContent(/leftover lock on/i);
     expect(screen.getByTestId("week-pulse")).toHaveTextContent("R180");
+    expect(screen.getByTestId("judge-walk")).toBeInTheDocument();
+  });
+
+  it("walks a judge through a missed gig so the desk sits", async () => {
+    const user = userEvent.setup();
+    render(<App />);
+    await enterAsThabo(user);
+    await user.click(screen.getByTestId("judge-walk-next"));
+    await user.click(screen.getByTestId("judge-walk-next"));
+    expect(screen.getByTestId("week-pulse")).toHaveTextContent(/sit/i);
+    expect(screen.getByTestId("leftover")).not.toHaveTextContent("R180");
+  });
+
+  it("offers add to home screen when the browser can install the web app", async () => {
+    render(<App />);
+    await act(async () => {
+      const event = new Event("beforeinstallprompt", { cancelable: true });
+      event.prompt = vi.fn();
+      event.userChoice = Promise.resolve({ outcome: "accepted" });
+      window.dispatchEvent(event);
+    });
+    expect(await screen.findByRole("button", { name: /add to home screen/i })).toBeInTheDocument();
   });
 
   it("rejects a bad password", async () => {

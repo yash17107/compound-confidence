@@ -1098,12 +1098,66 @@ button:disabled {
 }
 
 .walk-card ol {
-  margin: 0;
+  margin: 0 0 12px;
   padding-left: 20px;
   display: grid;
   gap: 6px;
   font-size: 14px;
   line-height: 1.4;
+}
+
+.walk-card li {
+  color: var(--muted);
+}
+
+.walk-card li.on {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.walk-card li.done {
+  color: var(--ok);
+}
+
+.more-desk {
+  margin: 0 0 16px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 4px 16px 8px;
+}
+
+.more-desk > summary {
+  cursor: pointer;
+  list-style: none;
+  padding: 12px 0;
+  font-weight: 600;
+  min-height: var(--touch);
+}
+
+.more-desk > summary::-webkit-details-marker {
+  display: none;
+}
+
+.more-desk[open] {
+  padding-bottom: 16px;
+}
+
+.app-live {
+  margin: 10px 0 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #d6ebe3;
+}
+
+.login-brand .install-btn {
+  margin-top: 12px;
+}
+
+.topbar .install-btn {
+  min-height: 36px;
+  padding: 6px 10px;
+  font-size: 13px;
 }
 
 .grid-2,

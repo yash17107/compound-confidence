@@ -1,4 +1,4 @@
-const VERSION = "cc-v9";
+const VERSION = "cc-v10";
 const SHELL = `${VERSION}-shell`;
 const RUNTIME = `${VERSION}-runtime`;
 const SHELL_FILES = [
