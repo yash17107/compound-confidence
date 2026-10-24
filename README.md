@@ -10,7 +10,7 @@ Rails are mapped FNB products, not live bank APIs: Easy Zero → savings pocket 
 
 ## Judges
 
-- Live: https://house-money-omega.vercel.app
+- Live: https://compound-confidence.vercel.app
 - Git: https://github.com/yash17107/compound-confidence
 - Thabo: `thabo@imali.za` / `leftover180` (or **Continue as Thabo**)
 - Nomsa: `nomsa@imali.za` / `wages200`

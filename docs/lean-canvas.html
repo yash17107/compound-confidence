@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="en-ZA">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Compound Confidence — Lean Canvas</title>
+    <style>
+      @page { size: A4 landscape; margin: 8mm; }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        color: #13211c;
+        font: 11px/1.35 "Segoe UI", "IBM Plex Sans", sans-serif;
+        background: #eef2f0;
+      }
+      .page {
+        width: 297mm;
+        min-height: 210mm;
+        margin: 0 auto;
+        background: #fff;
+        padding: 10mm 10mm 8mm;
+      }
+      header {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        gap: 16px;
+        margin-bottom: 10px;
+        padding-bottom: 8px;
+        border-bottom: 3px solid #10241f;
+      }
+      h1 {
+        font: 600 22px Georgia, "IBM Plex Serif", serif;
+        margin: 0;
+        color: #10241f;
+      }
+      .tag { color: #c8891a; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; font-size: 10px; margin: 0 0 4px; }
+      .meta { color: #5d6f67; font-size: 10px; text-align: right; max-width: 42ch; }
+      .grid {
+        display: grid;
+        grid-template-columns: 1.15fr 1.15fr 1.2fr 1.1fr 1.15fr;
+        grid-template-rows: auto auto auto;
+        gap: 6px;
+        min-height: 148mm;
+      }
+      .cell {
+        border: 1px solid #d3ddd8;
+        border-radius: 6px;
+        padding: 8px 9px 7px;
+        background: #f7faf8;
+      }
+      .cell h2 {
+        margin: 0 0 6px;
+        font-size: 9px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: #1b6b56;
+      }
+      .cell p, .cell li { margin: 0 0 5px; }
+      .cell ul { margin: 0; padding-left: 14px; }
+      .problem { grid-column: 1; grid-row: 1 / span 2; }
+      .solution { grid-column: 2; grid-row: 1; }
+      .metrics { grid-column: 2; grid-row: 2; }
+      .uvp { grid-column: 3; grid-row: 1 / span 2; background: #10241f; color: #eef6f2; }
+      .uvp h2 { color: #c8891a; }
+      .advantage { grid-column: 4; grid-row: 1; }
+      .channels { grid-column: 4; grid-row: 2; }
+      .segments { grid-column: 5; grid-row: 1 / span 2; }
+      .cost { grid-column: 1 / span 3; grid-row: 3; }
+      .revenue { grid-column: 4 / span 2; grid-row: 3; }
+      .money { background: #fbf6ea; }
+      .money h2 { color: #8a5d10; }
+      b { color: inherit; }
+      .uvp b { color: #fff; }
+      .foot {
+        margin-top: 8px;
+        color: #5d6f67;
+        font-size: 10px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      @media screen {
+        body { padding: 16px; }
+        .page { box-shadow: 0 8px 24px rgba(16, 36, 31, 0.08); }
+      }
+    </style>
+  </head>
+  <body>
+    <article class="page">
+      <header>
+        <div>
+          <p class="tag">FNB App of the Year 2026 · Lean Canvas</p>
+          <h1>Compound Confidence — leftover first.</h1>
+        </div>
+        <p class="meta">
+          Stack it, track it, flex it. Live PWA on Vercel.
+          compound-confidence.vercel.app · The Finance Bros
+        </p>
+      </header>
+
+      <div class="grid">
+        <section class="cell problem">
+          <h2>Problem statement (evidence)</h2>
+          <p>Pay for taxi, care, till and SASSA-plus-gig work does not land on the 25th. Stats SA’s QLFS still counts about <b>3 million informal-sector jobs</b>. Industry savings monitors keep finding that most households cannot cover <b>three months</b> without a payday. Stokvels prove people can save together (NASASA: ~11 million members), but leftover still dies in the week it arrives.</p>
+          <p>FNB already built Easy Zero and Shares Zero (R0 fee, 0% on FNB ETFs, no minimum). The gap is behavioural: WhatsApp “guaranteed 30%” and mashonisa credit teach people to YOLO the rent. FSCA keeps warning about those tips. Nothing sits in front of Shares Zero and says: <b>life first, leftover only, sit if leftover is R0</b>.</p>
+        </section>
+
+        <section class="cell solution">
+          <h2>Solution &amp; features</h2>
+          <ul>
+            <li>Three FNB-mapped pockets: Easy Zero, Savings, leftover Investments.</li>
+            <li>Forecast sit / light / go from the tape, not the calendar.</li>
+            <li>60-second ETF lesson before the first slice.</li>
+            <li>Leftover-gated Shares Zero marketplace (live JSE, paper buy).</li>
+            <li>Scam-aware coach. 12 official languages. Installable PWA.</li>
+          </ul>
+        </section>
+
+        <section class="cell metrics">
+          <h2>Key metrics</h2>
+          <ul>
+            <li><b>5 000</b> active desks in 6 months.</li>
+            <li><b>≥60%</b> sit when leftover is R0.</li>
+            <li><b>≥70%</b> finish the lesson before first invest.</li>
+            <li><b>40%</b> hold ≥1 week of rent in Savings.</li>
+            <li>We do not count trades placed.</li>
+          </ul>
+        </section>
+
+        <section class="cell uvp">
+          <h2>Unique value proposition</h2>
+          <p><b>The leftover lock in front of FNB Shares Zero.</b></p>
+          <p>Rent, food, airtime, stokvel first. Only leftover may buy a basket. If leftover is R0, sitting is the product — not a failed week.</p>
+          <p>We size the week you actually had. We never ask you to debit-order a salary you do not get.</p>
+        </section>
+
+        <section class="cell advantage">
+          <h2>Unfair advantage</h2>
+          <p>The lock is in the money path, not in a blog. Rent and mashonisa credit cannot become a ticker. The coach refuses hot tips. 12 languages on FNB rails. Paper on live prices, so a judge can break a week and watch the desk sit.</p>
+        </section>
+
+        <section class="cell channels">
+          <h2>Distribution channels</h2>
+          <ul>
+            <li>Now: live PWA — compound-confidence.vercel.app</li>
+            <li>FNB App of the Year / Easy Zero onboarding</li>
+            <li>Branch + taxi-rank + care-agency QR</li>
+            <li>Later: WhatsApp leftover wrap. Never a Telegram guru.</li>
+          </ul>
+        </section>
+
+        <section class="cell segments">
+          <h2>Customer segments</h2>
+          <p><b>Primary:</b> 18–35, township + metro (Soweto, Tembisa, Khayelitsha). Irregular take-home <b>R4 000–R12 000</b> / month. Taxi, care, till, delivery, SASSA + side gig.</p>
+          <p><b>Secondary:</b> 36–50 weekly-cash caregivers and domestic workers.</p>
+          <p><b>Language first:</b> isiZulu, isiXhosa, Sesotho, Afrikaans. English second.</p>
+          <p><b>Not:</b> Private Clients, salaried TFSA debit orders, crypto Discord.</p>
+          <p>Personas in the demo: Thabo (Soweto taxi + SASSA) leftover <b>R180</b>; Nomsa (Tembisa care).</p>
+        </section>
+
+        <section class="cell money cost">
+          <h2>Cost structure (monthly, 5 000-desk pilot)</h2>
+          <p>
+            Vercel Pro hosting <b>R1 200</b> · OpenAI gpt-4o-mini coach/wrap <b>R3 500</b> · quotes + logs <b>R800</b> ·
+            WhatsApp wrap (phase 2, 2 000 chats) <b>R1 000</b> · 12-language QA / community <b>R8 000</b>.
+            <b>Pilot total R14 500 / month</b> (R87 000 over 6 months). No leftover skim in the cost base.
+          </p>
+        </section>
+
+        <section class="cell money revenue">
+          <h2>Revenue streams (user pays R0)</h2>
+          <p>
+            FNB pays for inclusion outcomes, not trades:
+            <b>R120</b> per Easy Zero opened after the leftover lesson ·
+            <b>R280</b> per first leftover Shares Zero slice ·
+            <b>R15</b> / month per desk that sat correctly or parked leftover.
+            At 5 000 desks / 6 months: ~<b>R240 000</b> + <b>R350 000</b> + <b>R202 500</b> = <b>R792 500</b>.
+            We do not charge Thabo R30. We do not take a cut of leftover.
+          </p>
+        </section>
+      </div>
+
+      <p class="foot">
+        <span>Git: github.com/yash17107/compound-confidence · Demo: thabo@imali.za / leftover180</span>
+        <span>Paper on live JSE prices. Not a live FNB order. Not advice.</span>
+      </p>
+    </article>
+  </body>
+</html>
